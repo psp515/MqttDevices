@@ -2,35 +2,10 @@
 #include <LittleFS.h>
 #include <user_interface.h>
 
-const char* filename = "/lastReset.txt";
-const int buttonPin = 4;
-const int ledPin = 2;
+const char* filename = "/appsettings.json";
+String fileContent = R"EOF()EOF";
 
-void setup() {
-  Serial.begin(75880);
-
-  String reson = ESP.getResetReason();
-
-  if (reson == "Power On") {
-
-  if (reson == "Deep-Sleep Wake") {
-    
-  }
-
-  Serial.println("");
-  Serial.print("Reset Reason: ");
-  Serial.println(ESP.getResetReason());
-
-  pinMode(buttonPin, INPUT_PULLUP);
-  pinMode(ledPin, OUTPUT);
-
-  // Initialize LittleFS
-  if (!LittleFS.begin()) {
-    Serial.println("LittleFS mount failed");
-    return;
-  }
-
-  String dir_path = "./";
+void listFiles(String dir_path) {
   Dir dir = LittleFS.openDir(dir_path);
 	while(dir.next()) {
 		if (dir.isFile()) {
@@ -44,44 +19,49 @@ void setup() {
 			Serial.println(dir_path + dir.fileName() + "/");
 		}
 	}
+}
 
-  // Read last reset type from file
-  int lastResetType = -1;
-  if (LittleFS.exists(filename)) {
-    File f = LittleFS.open(filename, "r");
-    if (f) {
-      lastResetType = f.parseInt();
-      f.close();
+void removeAllFiles() {
+    Dir dir = LittleFS.openDir("/");
+    while (dir.next()) {
+        LittleFS.remove(dir.fileName());
     }
+}
+
+void removeFile(String fileToRemove) {
+  if (LittleFS.exists(fileToRemove)) {
+      LittleFS.remove(fileToRemove);
   }
-  Serial.print("Last reset type was: ");
-  Serial.println(lastResetType);
+}
 
-  // Detect current boot type
-  int currentResetType = (digitalRead(buttonPin) == LOW) ? 1 : 0;
+void printFileContent(String file) {
+  if (LittleFS.exists(file)) {
+      File f = LittleFS.open(file, "r");
+      String data = f.readString();
+      Serial.println(data);
+  }
+}
 
-  if (currentResetType == 1) {
-    Serial.println("Wake by button press detected");
-    digitalWrite(ledPin, HIGH);
-    delay(200);
-    digitalWrite(ledPin, LOW);
-  } else {
-    Serial.println("Normal boot detected");
-    for (int i = 0; i < 2; i++) {
-      digitalWrite(ledPin, HIGH);
-      delay(200);
-      digitalWrite(ledPin, LOW);
-    }
+void setup() {
+  Serial.begin(115200);
+    
+  Serial.println("");
+  Serial.println("Uploading file");
+
+  if (!LittleFS.begin()) {
+    Serial.println("LittleFS mount failed");
+    return;
   }
 
-  // Store current reset type to file for next boot
-  File f = LittleFS.open(filename, "w");
-  if (f) {
-    f.print(currentResetType);
-    f.close();
-  }
+  listFiles("./");
 
+  printFileContent("appsettings.json");
 
+  // File f = LittleFS.open(filename, "w");
+  // if (f) {
+  //   f.print(fileContent);
+  //   f.close();
+  // }
 }
 
 void loop() {
