@@ -4,31 +4,6 @@
 #include <ArduinoJson.h>
 #include <WiFiClientSecureBearSSL.h>
 
-/* TODO:
-- configuration - 
-- read trusted Ca certificatre
-- read wifi configuration
-  - ssid
-  - password
-- read mqtt configuration
-  - broker
-  - port
-  - username
-  - password
-  - ca certificate / insecure
-  - base topic
-- device config
-  - topic to send
-  
-- start read if button was pushed
-- connect to wifi
-- connect to mqtt
-- read last send value (int)+1
-- store n+1
-- sened event - clicked
-- deepsleep
-*/
-
 WiFiClientSecure espClient;
 PubSubClient mqttClient(espClient);
 

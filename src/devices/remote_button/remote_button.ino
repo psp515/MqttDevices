@@ -235,7 +235,7 @@ void setup() {
     return;
   }
 
-  Led builtin(2);
+  Led builtin(14);
 
   String reason = ESP.getResetReason();
 
