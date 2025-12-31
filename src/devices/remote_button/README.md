@@ -122,7 +122,7 @@ Required parts:
 - esp12-s (other esp8266 boards might work) ~ 1$
 - pushbutton ~ 0.15 $
 - 2x 1.5V battery (~2$ per year) or 1.2V nimh rechargeable battery (~8$ once but needs to recharge)
-- 3d printed casing [Example Case](TBA) ~ 3$
+- 3d printed casing [Example Case](https://www.thingiverse.com/thing:7256279) ~ 3$
 - 10k resistor ~ 0.01$
 - few wires ~ 0$
 - metal parts for bateries ~ 0$
@@ -134,6 +134,31 @@ Optional Parts:
 - JST connectors or similar
 - LED Diode
 - 220 ohm resistor
+- 2 x 10k ohm resistors
+
+#### Assembly steps
+
+1. Study wiring schema.
+2. Connect 10K ohm resistor / wire between VCC and EN pins on board.
+3. Connect VCC pin to battery + with wire (few centimeters).
+4. Connect GND pin to battery - with wire (few centimeters)
+5. Connect GPIO15 pin to GND pin.
+6. Connect GND pin and one side of push button with wire (few centimeters).
+7. Connect RST pin and second side of push button with wire (few centimeters).
+8. OPTIONAL - Connect VCC pin and RSt with 10k Ohm resistor
+9. OPTIONAL - Create 2 pin JST connector with short wires
+10. OPTIONAL - Connect one wire of connector to GND and second to GPIO14.
+11. OPTIONAL - Connect LED with second part of JST connector - REMEMBER to properly solder diode
+
+__Note:__ LED is intended to be used as a debug information.
+
+Wiring example:
+![Soldered](../../../assets//remote_button/Soldered.jpg)
+
+Optional Steps
+
+
+You can see how this button looks in my case on [Thingiverse](https://www.thingiverse.com/thing:7256279) where you will find example casing for button.
 
 #### Power calcuations
 
@@ -142,10 +167,19 @@ Optional Parts:
 - Power used when in deep sleep __20 µA__
 - Rechargable batteries 1.2V __750 mAh__ - so effective storage is __450 mAh__
 
+One click usage should be around `300 * 10 / 3600 = 0.83 mAh`
 One day uage is `0.83 * 4 + 0.0002 * 86360 / 3600 = 3.34 mAh`
 Working for: `450 / 3.34` ~ 135 days
 
 For 1.5V with capacity 1500 button will work for around a year.
+
+Also i conducted some test with multimeter:
+
+- in deep sleep mode current was around __50 µA__
+- when invoking main job of the button current was __70 mA__
+- in my case on average button does it work in 7.5 second not 10 seconds
+- installing optional LED increases deep sleep current to __200 µA__
+- second measured value is more important so actual time working on batteries can be 4 times bigger (4 years on AAA 1.5V sound beautifull)
 
 #### Uploading code and configuration
 
@@ -159,7 +193,7 @@ That's what I assume you will do.
   - if using `ssl` repete previous steps, but change `filename` and paste content of your CA certificate (`-----BEGIN CERTIFICATE----- MIIFazCCA... -----END CERTIFICATE-----`)
 - how you can open `src/devices/remote_button/remote_button.ino` and upload it inside the board
 
-Simplified schematic:
+After uploading all necesary files best is to test this solution on beradbord, if everything works you can move to creating final device. Simplified schematic:
 
 ![image](../../../assets/remote_button/RemoteButtonWiring.png)
 
@@ -169,5 +203,5 @@ __Note:__ Node mcu boards are good for development so when building final device
 
 - [allowing Over the air update](https://randomnerdtutorials.com/esp8266-nodemcu-ota-over-the-air-arduino/)
 - web server for simple configuration update
-
-TBA
+- place for diode in case
+- using transistor for LED - using LED increases battery drain
