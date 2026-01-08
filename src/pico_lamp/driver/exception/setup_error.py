@@ -1,0 +1,3 @@
+
+class SetupError(Exception):
+    pass
