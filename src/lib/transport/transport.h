@@ -1,26 +1,38 @@
-#ifndef MESSAGING_SERVICE_H
-#define MESSAGING_SERVICE_H
+#ifndef TRANSPORT_H
+#define TRANSPORT_H
+#define CALLBACK_SIGNATURE void (*callback)(char*, uint8_t*, unsigned int)
 
-
+#include <string.h>
 
 namespace mqttdevices::transport {
 
-    class Message {
+    class TransportMessage {
     public:
-            
+      TransportMessage() : payload(nullptr), path(nullptr) {}
+      TransportMessage(const char* _path, const char* _payload) : payload(_payload), path(_path) {}
+
+      ~TransportMessage() {
+        if (path) delete[] path;
+        if (payload) delete[] payload;
+      }
+
+      const char* getPath() const { return path; }
+      const char* getPayload() const { return payload; }
 
     private: 
-        char* payload;
-        char* id;
-        
+      const char* payload = nullptr;
+      const char* path = nullptr; 
     };
 
-    class TransportService {
+    class Transport {
     public:
-        virtual void start();
-        virtual bool send(Message message);
-        virtual void receive();
-        virtual void observe(const char* id, const char* payload);
+        typedef void (*MessageCallback)(const TransportMessage&);
+
+        virtual bool start() = 0;
+        virtual bool send(TransportMessage message) = 0;
+        virtual void receive() = 0;
+        virtual void observe(const char* id, MessageCallback callback) = 0;
+    
     };
 }
 

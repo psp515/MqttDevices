@@ -8,14 +8,20 @@ namespace mqttdevices::transport {
 
     class TransportMessage {
     public:
-      TransportMessage() : payload(nullptr), id(nullptr) {}
-      TransportMessage(const char* _id const char* _payload) : payload(_payload), id(_id) {}
-      const char* getId() const { return id; }
+      TransportMessage() : payload(nullptr), path(nullptr) {}
+      TransportMessage(const char* _path const char* _payload) : payload(_payload), path(_path) {}
+
+      ~TransportMessage() {
+        if (path) delete[] path;
+        if (payload) delete[] payload;
+      }
+
+      const char* getPath() const { return path; }
       const char* getPayload() const { return payload; }
-      
+
     private: 
-      char* payload;
-      char* id;  
+      char* payload = nullptr;
+      char* path = nullptr; 
     };
 
     class Transport {
@@ -35,17 +41,11 @@ namespace mqttdevices::transport {
 namespace mqttdevices::transport::mqtt {
 
     class MqttMessage final : public TransportMessage {
-    public:
-            
 
-    private: 
-        char* payload;
-        char* id;
-        
     };
 
     class MqttTransport final : public Transport {
-    public:
+    
     };
 }
 
