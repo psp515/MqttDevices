@@ -1,37 +1,29 @@
 #include "Arduino.h"
 #include <humanstaticLite.h>
+#include <SoftwareSerial.h>
 
-//#include <SoftwareSerial.h>
-// Choose any two pins that can be used with SoftwareSerial to RX & TX
-//#define RX_Pin A2
-//#define TX_Pin A3
+#define RX_Pin 5
+#define TX_Pin 4
 
-//SoftwareSerial mySerial = SoftwareSerial(RX_Pin, TX_Pin);
+SoftwareSerial mySerial = SoftwareSerial(RX_Pin, TX_Pin);
 
-// we'll be using software serial
-//HumanStaticLite radar = HumanStaticLite(&mySerial);
-
-// can also try hardware serial with
-HumanStaticLite radar = HumanStaticLite(&Serial1);
+HumanStaticLite radar = HumanStaticLite(&mySerial);
 
 void setup() {
-  // put your setup code here, to run once:
-  Serial.begin(115200);
-  Serial1.begin(115200);
-
-  //  mySerial.begin(115200);
-
-  while(!Serial);   //When the serial port is opened, the program starts to execute.
-
+  mySerial.begin(115200);
+  while(!mySerial);
   Serial.println("Readly");
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-  radar.HumanStatic_func(true);    //Turn on printing of human movement sign parameters
+  radar.HumanStatic_func(true);
+
   if(radar.radarStatus != 0x00){
+    
+    radar.showData();  
+    Serial.println(radar.radarStatus);
+
     switch(radar.radarStatus){
-      Serial.println(radar.radarStatus);
       case SOMEONE:
         Serial.println("Someone is here.");
         Serial.println("---------------------------------");
@@ -80,5 +72,6 @@ void loop() {
         break;
     }
   }
+
   delay(200);
 }
