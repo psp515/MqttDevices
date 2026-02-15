@@ -3,9 +3,9 @@
 
 #include "transport.h"
 
-using namespace mqttdevices::transport;
+using namespace smartdevices::transport;
 
-namespace mqttdevices::transport::mqtt {
+namespace smartdevices::transport::mqtt {
 
     class MqttMessage final : public TransportMessage {
 

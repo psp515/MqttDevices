@@ -2,9 +2,7 @@
 #define TRANSPORT_H
 #define CALLBACK_SIGNATURE void (*callback)(char*, uint8_t*, unsigned int)
 
-#include <string.h>
-
-namespace mqttdevices::transport {
+namespace smartdevices::transport {
 
     class TransportMessage {
     public:

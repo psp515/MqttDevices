@@ -4,11 +4,11 @@
 #include <Arduino.h>
 #include <string.h>
 
-namespace mqttdevices::transport {
+namespace smartdevices::transport {
 
     class TransportMessage {
     public:
-      TransportMessage() : payload(nullptr), path(nullptr) {}
+      TransportMessage() : payload(nulc:\Users\kolbe\Desktop\test.inolptr), path(nullptr) {}
       TransportMessage(const char* _path const char* _payload) : payload(_payload), path(_path) {}
 
       ~TransportMessage() {
@@ -38,7 +38,7 @@ namespace mqttdevices::transport {
 #ifndef MQTT_TRANSPORT_H
 #define MQTT_TRANSPORT_H
 
-namespace mqttdevices::transport::mqtt {
+namespace smartdevices::transport::mqtt {
 
     class MqttMessage final : public TransportMessage {
 
