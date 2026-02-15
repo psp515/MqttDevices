@@ -8,22 +8,18 @@ namespace smartdevices::logging {
 
 class SerialLogger final : public Logger {
 public:
-    explicit SerialLogger(HardwareSerial& serial)
-        : _serial(serial) {}
-
-    void begin() {
-        while (!_serial);
-    }
+    explicit SerialLogger(Stream& stream)
+        : _stream(stream) {}
 
     void log(LogLevel level, const char* message) override {
-        _serial.print('[');
-        _serial.print(levelToString(level));
-        _serial.print("] ");
-        _serial.println(message);
+        _stream.print('[');
+        _stream.print(levelToString(level));
+        _stream.print("] ");
+        _stream.println(message);
     }
 
 private:
-    HardwareSerial& _serial;
+    Stream& _stream;
 };
 
 } // namespace smartdevices::logging
