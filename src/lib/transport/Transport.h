@@ -1,6 +1,8 @@
 #ifndef TRANSPORT_H
 #define TRANSPORT_H
-#define CALLBACK_SIGNATURE void (*callback)(char*, uint8_t*, unsigned int)
+
+#include "Logger.h"
+#include "Configuration.h"
 
 namespace smartdevices::transport {
 
@@ -24,13 +26,27 @@ namespace smartdevices::transport {
 
     class Transport {
     public:
-        typedef void (*MessageCallback)(const TransportMessage&);
 
-        virtual bool start() = 0;
-        virtual bool send(TransportMessage message) = 0;
-        virtual void receive() = 0;
-        virtual void observe(const char* id, MessageCallback callback) = 0;
-    
+      explicit Transport(Configuration configuration, Logger& logger) : _configuration(configuration), _logger(logger) {};
+
+      virtual bool start() = 0;
+      virtual bool reconnect() = 0;
+
+      virtual bool send(TransportMessage message) = 0;
+      virtual void receive() = 0;
+      virtual void observe(const char* path, MessageCallback callback) = 0;
+
+      typedef void (*MessageCallback)(const TransportMessage&);
+
+    protected:
+      Logger _logger
+      Configuration _configuration;
+      std::vector<TransportCallback> _callbacks;
+
+      struct TransportCallback {
+        const char* path;
+        MessageCallback callback;
+      };
     };
 }
 
