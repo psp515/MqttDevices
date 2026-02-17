@@ -98,30 +98,31 @@ namespace smartdevices::transport {
 
     void MqttTransport::reconnect()
     {
-        char clientId[128];
-        char baseTopic[64] = "";
+        char baseTopic[128] = "";
 
         if (!_configuration.getString("mqtt:baseTopic", baseTopic, sizeof(baseTopic))) {
-            strncpy(baseTopic, "device/default", sizeof(baseTopic) - 1);
-            baseTopic[sizeof(baseTopic) - 1] = '\0';
+            throw std::runtime_error("MQTT failed to get baseTopic.");
         }
 
-        char baseId[16] = "ESPClient";
-        _configuration.getString("mqtt:clientId", baseId, sizeof(baseId));
+        char baseClientId[64] = "Client";
+        if (!_configuration.getString("mqtt:clientId", baseClientId, sizeof(baseClientId))){
+            throw std::runtime_error("MQTT failed to get base clientId.");
+        }
 
         while (!_mqttClient->connected()) {
-            char baseId[112] = "MqttClient"; 
-            _configuration.getString("mqtt:clientId", baseId, sizeof(baseId));
+            char clientId[128] = "MqttClient"; 
 
             uint16_t randNum = random(0xffff);
-            snprintf(clientId, sizeof(clientId), "%s-%04X", baseId, randNum);
+            snprintf(clientId, sizeof(clientId), "%s-%04X", baseClientId, randNum);
 
             if (_mqttClient->connect(clientId)) {
-                for (auto& obs : _observers) {
+
+                for (auto& callback : _callbacks) {
                     char fullTopic[128];
-                    snprintf(fullTopic, sizeof(fullTopic), "%s/%s", baseTopic, obs.first); // prepend baseTopic
+                    snprintf(fullTopic, sizeof(fullTopic), "%s/%s", baseTopic, callback.path);
                     _mqttClient->subscribe(fullTopic);
                 }
+
             } else {
                 delay(500);
             }
@@ -144,10 +145,10 @@ namespace smartdevices::transport {
 
     void MqttTransport::observe(const char* id, MessageCallback callback)
     {
-        Observer obs;
-        obs.topic = id;
-        obs.callback = callback;
-        _observers.push_back(obs);
+        TransportCallback callback;
+        callback.topic = id;
+        callback.callback = callback;
+        _callbacks.push_back(callback);
 
         if (_mqttClient->connected())
             _mqttClient->subscribe(id);
@@ -157,10 +158,10 @@ namespace smartdevices::transport {
     {
         std::string strPayload((char*)payload, length);
 
-        for (auto& obs : _observers) {
-            if (strcmp(topic, obs.topic) == 0) {
+        for (auto& callback : _callbacks) {
+            if (strcmp(topic, callback.topic) == 0) {
                 TransportMessage msg(topic, strPayload.c_str());
-                obs.callback(msg);
+                obcallbacks.callback(msg);
             }
         }
     }

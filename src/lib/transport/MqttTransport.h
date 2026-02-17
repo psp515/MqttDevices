@@ -1,10 +1,12 @@
 #ifndef MQTT_TRANSPORT_H
 #define MQTT_TRANSPORT_H
 
-#include "Transport.h"
 #include "Logger.h"
+#include "Configuration.h"
+#include "Transport.h"
 
 using namespace smartdevices::logging;
+using namespace smartdevices::configuration;
 
 namespace smartdevices::transport {
 

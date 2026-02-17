@@ -1,8 +1,13 @@
 #ifndef TRANSPORT_H
 #define TRANSPORT_H
 
+#include <vector>
+
 #include "Logger.h"
 #include "Configuration.h"
+
+using namespace smartdevices::logging;
+using namespace smartdevices::configuration;
 
 namespace smartdevices::transport {
 
@@ -24,10 +29,16 @@ namespace smartdevices::transport {
       const char* path = nullptr; 
     };
 
+    using MessageCallback = void (*)(const TransportMessage&);
+
+    struct TransportCallback {
+      const char* path;
+      MessageCallback callback;
+    };
+
     class Transport {
     public:
-
-      explicit Transport(Configuration configuration, Logger& logger) : _configuration(configuration), _logger(logger) {};
+      explicit Transport(Configuration& configuration, Logger& logger) : _configuration(configuration), _logger(logger) {};
 
       virtual bool start() = 0;
       virtual bool reconnect() = 0;
@@ -36,17 +47,10 @@ namespace smartdevices::transport {
       virtual void receive() = 0;
       virtual void observe(const char* path, MessageCallback callback) = 0;
 
-      typedef void (*MessageCallback)(const TransportMessage&);
-
     protected:
-      Logger _logger
+      Logger _logger;
       Configuration _configuration;
       std::vector<TransportCallback> _callbacks;
-
-      struct TransportCallback {
-        const char* path;
-        MessageCallback callback;
-      };
     };
 }
 

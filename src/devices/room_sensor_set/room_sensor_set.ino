@@ -7,8 +7,12 @@
 #include "Logger.h"
 #include "SerialLogger.h"
 
+#include "MqttTransport.h"
+#include "Configuration.h"
+#include "JsonConfiguration.h"
+
 #define DHTPIN 14  
-#define DHTTYPE DHT11  
+#define DHTTYPE DHT22  
 
 #define RX_Pin 5
 #define TX_Pin 4
@@ -23,10 +27,17 @@ SerialLogger serialLogger(Serial);
 Logger& logger = serialLogger;
 DHT dht(DHTPIN, DHTTYPE);
 
+JsonConfiguration jsonConfiguration("appsettings.json");
+
+Logger& logger = serialLogger;
+Configuration& configuration = jsonConfiguration;
+
 void setup() {
   Serial.begin(115200);
   mySerial.begin(115200);
   dht.begin();
+
+  char* password = configuration.getString("wifi:password");
 
   pinMode(PRESENCE_Pin, INPUT); 
 
@@ -36,6 +47,9 @@ void setup() {
 
 int i = 0;
 
+
+static int lastButtonState = LOW; 
+
 void loop() {
   radar.HumanStatic_func(false);
   i++;
@@ -43,7 +57,7 @@ void loop() {
   if (i%50 == 0) {
     i = 0;
 
-      float h = dht.readHumidity();
+    float h = dht.readHumidity();
     float t = dht.readTemperature();     // Celsius
     float f = dht.readTemperature(true); // Fahrenheit
 
@@ -57,11 +71,15 @@ void loop() {
 
   int buttonState = digitalRead(PRESENCE_Pin);
 
-  // if (buttonState == HIGH) { 
-  //   logger.info("Human presnet.");
-  // } else {
-  //   logger.info("No!");
-  // }
+  if (buttonState != lastButtonState) {
+      lastButtonState = buttonState;
+
+      if (buttonState == HIGH) {
+          logger.info("Human present.");
+      } else {
+          logger.info("No human present.");
+      }
+  }
 
   if(radar.radarStatus != 0x00){
     

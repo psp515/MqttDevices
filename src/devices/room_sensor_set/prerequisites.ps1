@@ -2,7 +2,8 @@
 # List of library folders to copy (names must match folders in src\lib\)
 $Libraries = @(
     "logger",
-    "transport"
+    "transport",
+    "configuration"
 )
 
 # Resolve script directory
