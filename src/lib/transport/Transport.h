@@ -48,8 +48,8 @@ namespace smartdevices::transport {
       virtual void observe(const char* path, MessageCallback callback) = 0;
 
     protected:
-      Logger _logger;
-      Configuration _configuration;
+      Logger& _logger;
+      Configuration& _configuration;
       std::vector<TransportCallback> _callbacks;
     };
 }

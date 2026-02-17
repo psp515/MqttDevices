@@ -1,6 +1,11 @@
 #ifndef MQTT_TRANSPORT_H
 #define MQTT_TRANSPORT_H
 
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <PubSubClient.h>
+
+
 #include "Logger.h"
 #include "Configuration.h"
 #include "Transport.h"

@@ -7,7 +7,7 @@
 #include "Logger.h"
 #include "SerialLogger.h"
 
-#include "MqttTransport.h"
+//#include "MqttTransport.h"
 #include "Configuration.h"
 #include "JsonConfiguration.h"
 
@@ -19,15 +19,15 @@
 #define PRESENCE_Pin 15
 
 using namespace smartdevices::logging;
+using namespace smartdevices::configuration;
 
 SoftwareSerial mySerial = SoftwareSerial(RX_Pin, TX_Pin);
 HumanStaticLite radar = HumanStaticLite(&mySerial);
 
 SerialLogger serialLogger(Serial);
-Logger& logger = serialLogger;
 DHT dht(DHTPIN, DHTTYPE);
 
-JsonConfiguration jsonConfiguration("appsettings.json");
+JsonConfiguration jsonConfiguration(serialLogger, "appsettings.json");
 
 Logger& logger = serialLogger;
 Configuration& configuration = jsonConfiguration;
@@ -36,8 +36,10 @@ void setup() {
   Serial.begin(115200);
   mySerial.begin(115200);
   dht.begin();
+  configuration.load();
 
-  char* password = configuration.getString("wifi:password");
+  char password[64];
+  configuration.getString("wifi:password", password, sizeof(password));
 
   pinMode(PRESENCE_Pin, INPUT); 
 

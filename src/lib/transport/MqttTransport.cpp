@@ -1,3 +1,9 @@
+#include <stdexcept>
+#include <string>
+#include <mutex>
+
+#include <LittleFS.h>
+
 #include "MqttTransport.h"
 
 namespace smartdevices::transport {
@@ -15,20 +21,12 @@ namespace smartdevices::transport {
             throw std::runtime_error("MQTT Port missing in configuration");
 
         bool sslEnabled = false;
-        _configuration.getBool("mqtt:ssl:enabled", sslEnabled)
+        _configuration.getBool("mqtt:ssl:enabled", sslEnabled);
 
         if (sslEnabled) {
             _sslClient = new WiFiClientSecure();
 
-            bool secure = false;
-            _configuration.getBool("mqtt:ssl:secure", secure)
-
-            char certFileName[1024];
-
-            if (!_configuration.getString("mqtt:url", certFileName, sizeof(certFileName)))
-                throw std::runtime_error("MQTT Ssl file name missing in configuration");
-
-            setupCaCert(secure, certFileName);
+            setupCaCert();
 
             _mqttClient = new PubSubClient(*_sslClient);
         } else {
@@ -39,7 +37,6 @@ namespace smartdevices::transport {
         _mqttClient->setServer(url, port);
         _mqttClient->setCallback([this](char* topic, byte* payload, unsigned int length) 
         {
-            _logger.debug("[" + topic + "]Received message: " + payload);
             mqttCallback(topic, payload, length);
         });
     }
@@ -53,14 +50,14 @@ namespace smartdevices::transport {
 
     void setupCaCert() {
         bool secure = false;
-        _configuration.getBool("mqtt:ssl:secure", secure)
+        _configuration.getBool("mqtt:ssl:secure", secure);
 
         if (!secure) {
             _sslClient.setInsecure();
             return;
         }
 
-        char certFileName[1024];
+        char certFileName[128];
 
         if (!_configuration.getString("mqtt:ssl:certFile", certFileName, sizeof(certFileName)))
             throw std::runtime_error("MQTT Ssl file name missing in configuration");
@@ -84,7 +81,7 @@ namespace smartdevices::transport {
 
         _sslClient.setTrustAnchors(caCert);
 
-        logger.info("MQTT SSL - certificate loaded successfully.");
+        _logger.info("MQTT SSL - certificate loaded successfully.");
     }
 
     bool MqttTransport::start()
@@ -157,6 +154,8 @@ namespace smartdevices::transport {
     void MqttTransport::mqttCallback(char* topic, byte* payload, unsigned int length)
     {
         std::string strPayload((char*)payload, length);
+
+        _logger.debug((std::string("[") + topic + "] Received message:" + strPayload).c_str());
 
         for (auto& callback : _callbacks) {
             if (strcmp(topic, callback.topic) == 0) {

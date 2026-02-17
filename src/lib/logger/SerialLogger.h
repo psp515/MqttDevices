@@ -22,6 +22,6 @@ private:
     Stream& _stream;
 };
 
-} // namespace smartdevices::logging
+}
 
-#endif // SERIALLOGGER_H
+#endif
