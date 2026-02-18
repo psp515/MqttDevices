@@ -5,7 +5,6 @@
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 
-
 #include "Logger.h"
 #include "Configuration.h"
 #include "Transport.h"
@@ -19,14 +18,23 @@ namespace smartdevices::transport {
     public:
         explicit MqttTransport(Configuration& configuration, Logger& logger);
         virtual ~MqttTransport();
-
+        bool start() override;
+        bool reconnect() override;
+        bool send(TransportMessage message) override;
+        bool loop() override;
+        bool observe(const char* path, MessageCallback callback) override;
+        
     private:
+        static void mqttCallbackStatic(char* topic, byte* payload, unsigned int length);
         void mqttCallback(char* topic, byte* payload, unsigned int length);
-        void setupCaCert();
+        bool initializeCallback(const TransportCallback& callback);
+        bool initializeCaCertificate();
 
+        static MqttTransport* _instance;
+        long lastReconnectAttempt = 0;
         WiFiClientSecure* _sslClient = nullptr;
         WiFiClient* _plainClient = nullptr;
-        PubSubClient* _mqttClient = nullptr;
+        PubSubClient _mqttClient;
     };
 }
 

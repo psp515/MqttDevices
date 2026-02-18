@@ -6,15 +6,16 @@
 namespace smartdevices::logging {
 
     enum class LogLevel {
-        Debug,
-        Info,
-        Warn,
-        Error,
-        Critical
+        Debug = 0,
+        Info = 1,
+        Warn = 2,
+        Error = 3,
+        Critical = 4
     };
 
     class Logger {
     public:
+        Logger(LogLevel level) : _level(level) {}
         virtual ~Logger() {}
 
         virtual void log(LogLevel level, const char* message) = 0;
@@ -36,6 +37,8 @@ namespace smartdevices::logging {
             log(LogLevel::Error, message);
         }
     protected:
+        LogLevel _level;
+
         static const char* levelToString(LogLevel level) {
             switch (level) {
                 case LogLevel::Debug: 

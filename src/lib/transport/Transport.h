@@ -44,8 +44,8 @@ namespace smartdevices::transport {
       virtual bool reconnect() = 0;
 
       virtual bool send(TransportMessage message) = 0;
-      virtual void receive() = 0;
-      virtual void observe(const char* path, MessageCallback callback) = 0;
+      virtual bool loop() = 0;
+      virtual bool observe(const char* path, MessageCallback callback) = 0;
 
     protected:
       Logger& _logger;

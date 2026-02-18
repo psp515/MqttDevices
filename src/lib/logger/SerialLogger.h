@@ -8,10 +8,14 @@ namespace smartdevices::logging {
 
 class SerialLogger final : public Logger {
 public:
-    explicit SerialLogger(Stream& stream)
-        : _stream(stream) {}
+    explicit SerialLogger(Stream& stream, LogLevel level = LogLevel::Info) : Logger(level), _stream(stream) {}
 
     void log(LogLevel level, const char* message) override {
+
+        if (level < _level) {
+            return;
+        }
+
         _stream.print('[');
         _stream.print(levelToString(level));
         _stream.print("] ");
@@ -20,6 +24,7 @@ public:
 
 private:
     Stream& _stream;
+
 };
 
 }
