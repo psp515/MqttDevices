@@ -2,9 +2,11 @@
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 
-#include "JsonConfiguration.h"
+#include "Configuration.h"
+#include "SerialLogger.h"
 
 using namespace smartdevices::configuration;
+using namespace smartdevices::logging;
 
 const char* filename = "/appsettings.json";
 String fileContent = R"EOF()EOF";
@@ -95,13 +97,16 @@ void loop() {
 
   // Json Configuration Example
 
-  SerialLogger logger(Serial);
-  JsonConfiguration config(logger, filename);
+  SerialLogger logger(Serial, LogLevel::DEBUG);
+  Configuration config(logger, filename);
+  config.load();
 
-  char password[64]= config.getConfig()["wifi"]["password"];
 
-  Serial.print("Loaded value from custom config:" );
-  Serial.println(password);
+  const char password[12] = config.getConfig()["wifi"]["password"].as<const char[12]>();
+
+  password[7] = '\0';
+  logger.info("Loaded value: %s", password);
+  Serial.print(password);
 
   Serial.println("Sleeping ...");  
   delay(5000);
