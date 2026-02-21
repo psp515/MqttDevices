@@ -27,7 +27,7 @@ HumanStaticLite radar = HumanStaticLite(&mySerial);
 SerialLogger serialLogger(Serial);
 DHT dht(DHTPIN, DHTTYPE);
 
-JsonConfiguration jsonConfiguration(serialLogger, "appsettings.json");
+JsonConfiguration jsonConfiguration(serialLogger, "./appsettings.json");
 
 Logger& logger = serialLogger;
 Configuration& configuration = jsonConfiguration;
@@ -37,6 +37,10 @@ void setup() {
   mySerial.begin(115200);
   dht.begin();
   configuration.load();
+
+  if (!LittleFS.begin()) {
+    logger.error("Failed to start filesystem");
+  }
 
   char password[64];
   configuration.getString("wifi:password", password, sizeof(password));
@@ -49,6 +53,21 @@ void setup() {
 
 int i = 0;
 
+void listFiles(String dir_path) {
+  Dir dir = LittleFS.openDir(dir_path);
+	while(dir.next()) {
+		if (dir.isFile()) {
+			// print file names
+			Serial.print("File: ");
+			Serial.println(dir_path + dir.fileName());
+		}
+		if (dir.isDirectory()) {
+			// print directory names
+			Serial.print("Dir: ");
+			Serial.println(dir_path + dir.fileName() + "/");
+		}
+	}
+}
 
 static int lastButtonState = LOW; 
 
@@ -62,6 +81,7 @@ void loop() {
     float h = dht.readHumidity();
     float t = dht.readTemperature();     // Celsius
     float f = dht.readTemperature(true); // Fahrenheit
+    listFiles("./");
 
     if (isnan(h) || isnan(t) || isnan(f)) {
       logger.error("Failed to read from DHT sensor!");

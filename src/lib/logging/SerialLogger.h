@@ -2,6 +2,7 @@
 #define SERIALLOGGER_H
 
 #include <Arduino.h>
+
 #include "logger.h"
 
 namespace smartdevices::logging {

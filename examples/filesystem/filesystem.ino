@@ -1,6 +1,10 @@
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <LittleFS.h>
-#include <user_interface.h>
+
+#include "JsonConfiguration.h"
+
+using namespace smartdevices::configuration;
 
 const char* filename = "/appsettings.json";
 String fileContent = R"EOF()EOF";
@@ -43,6 +47,7 @@ void printFileContent(String file) {
 }
 
 void setup() {
+  delay(15000);
   Serial.begin(115200);
     
   Serial.println("");
@@ -53,18 +58,51 @@ void setup() {
     return;
   }
 
-  listFiles("./");
-
-  printFileContent("appsettings.json");
-
+  // ----------- Save File
   // File f = LittleFS.open(filename, "w");
   // if (f) {
   //   f.print(fileContent);
   //   f.close();
   // }
+  
+
 }
 
 void loop() {
-  Serial.println("Deep sleeping");
-  ESP.deepSleep(6);
+  Serial.println("Working ...");   
+  
+  // ----------- List File
+  listFiles("./");
+
+  // ----------- Print File
+  printFileContent("appsettings.json");
+
+  // ----------- Json
+  File f = LittleFS.open(filename, "r");
+  String data = f.readString();
+
+  JsonDocument doc;
+  auto err = deserializeJson(doc, data.c_str());
+
+  if (err) {
+    Serial.println(err.c_str());  
+  }
+
+  Serial.println("Deserialization success.");  
+
+  Serial.print("Found element in json: ");
+  Serial.println(doc["wifi"]["password"].as<const char*>());
+
+  // Json Configuration Example
+
+  SerialLogger logger(Serial);
+  JsonConfiguration config(logger, filename);
+
+  char password[64]= config.getConfig()["wifi"]["password"];
+
+  Serial.print("Loaded value from custom config:" );
+  Serial.println(password);
+
+  Serial.println("Sleeping ...");  
+  delay(5000);
 }

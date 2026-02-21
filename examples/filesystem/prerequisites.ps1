@@ -2,13 +2,12 @@
 # List of library folders to copy (names must match folders in src\lib\)
 $Libraries = @(
     "logging",
-    "transport",
     "configuration"
 )
 
 # Resolve script directory
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
-$SrcRoot = Resolve-Path (Join-Path $ScriptDir "..\..") 
+$SrcRoot = Resolve-Path (Join-Path $ScriptDir "..\..\src") 
 
 # Source libraries live here
 $LibSource = Join-Path $SrcRoot "lib"
