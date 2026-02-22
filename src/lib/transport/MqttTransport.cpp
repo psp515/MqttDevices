@@ -140,7 +140,7 @@ namespace smartdevices::transport {
 
     bool MqttTransport::loop()
     {
-        if (!_mqttClient.connected()) {
+        if (_mqttClient.connected() != 0) {
             
             _logger.warn("MQTT - Not connected when standard looping, attempting to reconnect...");
 
