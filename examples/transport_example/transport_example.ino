@@ -30,12 +30,11 @@ void listFiles(String dir_path) {
 
 SerialLogger logger(Serial, LogLevel::DEBUG);
 JsonConfiguration config(logger, filename);
+MqttTransport transport(config, logger);
 
-MqttTransport* transport = nullptr;
 bool wifiInitialized = false;
 bool transportStarted = false;
 unsigned long lastSend = 0;
-
 
 void diag() {
   Serial.println("---- SYSTEM INFO ----");
@@ -120,10 +119,12 @@ void loop() {
 
   if (!transportStarted) {
 
-    transport = new MqttTransport(config, logger);
-
     if (!transport->start()) {
       logger.error("Failed to start MQTT transport.");
+      auto client = transport->getClient();
+      logger.info("Is connected %d", client.connected());
+      logger.info("MQTT state: %d", client.state());
+
       delay(5000);
       return;
     }
@@ -131,7 +132,6 @@ void loop() {
     transportStarted = true;
     logger.info("MQTT transport started.");
   }
-
 
   logger.info("----------- Transport Messaging ----------- ");
   diag();
@@ -150,6 +150,7 @@ void loop() {
 
     logger.info("Before messge sent.");
     // TODO: Debug error here
+
     if (transport->send(msg)) {
       logger.info("Message sent.");
     } else {

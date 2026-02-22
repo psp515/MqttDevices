@@ -104,7 +104,9 @@ namespace smartdevices::transport {
             uint16_t randNum = random(0xffff);
             snprintf(clientId, sizeof(clientId), "%s-%04X", baseClientId, randNum);
 
-            if (_mqttClient.connect(clientId)) {
+            int state = _mqttClient.connect(clientId);
+
+            if (state == 0) {
 
                 for (auto& callback : _callbacks) {
                     char fullTopic[128];
@@ -113,8 +115,8 @@ namespace smartdevices::transport {
                 }
 
             } else {
-                _logger.warn("MQTT - Failed to connect, retrying in 2 seconds...");
-                delay(2000);
+                _logger.warn("MQTT - Failed to connect with state %d, retrying in 5 seconds...", state);
+                delay(5000);
             }
 
             i++;
@@ -140,7 +142,7 @@ namespace smartdevices::transport {
 
     bool MqttTransport::loop()
     {
-        if (_mqttClient.connected() != 0) {
+        if (!_mqttClient.connected()) {
             
             _logger.warn("MQTT - Not connected when standard looping, attempting to reconnect...");
 

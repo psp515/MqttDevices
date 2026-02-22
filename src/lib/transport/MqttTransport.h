@@ -23,6 +23,9 @@ namespace smartdevices::transport {
         bool send(TransportMessage message) override;
         bool loop() override;
         bool observe(const char* path, MessageCallback callback) override;
+        PubSubClient getClient() {
+            return _mqttClient;
+        }
         
     private:
         static void mqttCallbackStatic(char* topic, byte* payload, unsigned int length);
