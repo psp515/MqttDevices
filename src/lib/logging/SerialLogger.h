@@ -7,30 +7,27 @@
 #include "logger.h"
 
 namespace smartdevices::logging {
+    class SerialLogger final : public Logger {
+    public:
+        explicit SerialLogger(Stream& stream, LogLevel level = LogLevel::INFO) : Logger(level), _stream(stream) {}
 
-class SerialLogger final : public Logger {
-public:
-    explicit SerialLogger(Stream& stream, LogLevel level = LogLevel::INFO) : Logger(level), _stream(stream) {}
 
-    void log(LogLevel level, const char* format, ...) {
-        _stream.print('[');
-        _stream.print(levelToString(level));
-        _stream.print("] ");
+        void log(LogLevel level, const char* format, va_list args) {
+            _stream.print('[');
+            _stream.print(levelToString(level));
+            _stream.print("] ");
 
-        char buffer[2048];
-        va_list args;
-        va_start(args, format);
-        vsnprintf(buffer, sizeof(buffer), format, args);
-        va_end(args);
+            char buffer[2048];
 
-        _stream.println(buffer);
-    }
+            vsnprintf(buffer, sizeof(buffer), format, args);
 
-private:
-    Stream& _stream;
+            _stream.println(buffer);
+        }
 
-};
+    private:
+        Stream& _stream;
 
+    };
 }
 
 #endif

@@ -216,22 +216,36 @@ namespace smartdevices::configuration {
         {
             JsonVariantConst current = _doc.as<JsonVariantConst>();
 
-            char localPath[128];
-            strncpy(localPath, path, sizeof(localPath));
-            localPath[sizeof(localPath) - 1] = '\0';
+            const char* segmentStart = path;
 
-            char* token = strtok(localPath, ":");
-
-            while (token)
+            while (segmentStart && *segmentStart)
             {
-                current = current[token];
+                // Find next ':' or end of string
+                const char* segmentEnd = strchr(segmentStart, ':');
 
+                size_t segmentLen = segmentEnd
+                    ? static_cast<size_t>(segmentEnd - segmentStart)
+                    : strlen(segmentStart);
+
+                // Copy segment into a small buffer
+                char key[64];
+                if (segmentLen >= sizeof(key)) {
+                    _logger.error("Path segment too long.");
+                    return JsonVariantConst();
+                }
+
+                memcpy(key, segmentStart, segmentLen);
+                key[segmentLen] = '\0';
+
+                // Navigate JSON
+                current = current[key];
                 if (current.isNull()) {
                     _logger.error("Path not found.");
                     return JsonVariantConst();
                 }
 
-                token = strtok(nullptr, ":");
+                // Move to next segment
+                segmentStart = segmentEnd ? segmentEnd + 1 : nullptr;
             }
 
             return current;

@@ -2,7 +2,7 @@
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 
-#include "Configuration.h"
+#include "JsonConfiguration.h"
 #include "SerialLogger.h"
 
 using namespace smartdevices::configuration;
@@ -48,6 +48,9 @@ void printFileContent(String file) {
   }
 }
 
+SerialLogger logger(Serial, LogLevel::DEBUG);
+JsonConfiguration config(logger, filename);
+
 void setup() {
   delay(15000);
   Serial.begin(115200);
@@ -74,12 +77,15 @@ void loop() {
   Serial.println("Working ...");   
   
   // ----------- List File
+  logger.info("----------- List files ----------- ");
   listFiles("./");
 
   // ----------- Print File
+  logger.info("----------- Print file content ----------- ");
   printFileContent("appsettings.json");
 
   // ----------- Json
+  logger.info("----------- Json lib example ----------- ");
   File f = LittleFS.open(filename, "r");
   String data = f.readString();
 
@@ -90,24 +96,24 @@ void loop() {
     Serial.println(err.c_str());  
   }
 
-  Serial.println("Deserialization success.");  
-
-  Serial.print("Found element in json: ");
-  Serial.println(doc["wifi"]["password"].as<const char*>());
+  logger.info("Found element in json: %s", doc["wifi"]["password"].as<const char*>());
 
   // Json Configuration Example
-
-  SerialLogger logger(Serial, LogLevel::DEBUG);
-  Configuration config(logger, filename);
+  logger.info("----------- Config example ----------- ");
   config.load();
 
+  char password[64] = "\0";
+  bool success = config.getString("wifi:password", password, sizeof(password));
 
-  const char password[12] = config.getConfig()["wifi"]["password"].as<const char[12]>();
+  logger.info("Loaded configuration value: %s", password);
 
-  password[7] = '\0';
-  logger.info("Loaded value: %s", password);
-  Serial.print(password);
+  int port = 0;
+  success = config.getInt("mqtt:port", port);
 
-  Serial.println("Sleeping ...");  
-  delay(5000);
+  char buffer[64];
+  snprintf(buffer, sizeof(buffer), "Loaded configuration value port: %d", port);
+  logger.warn(buffer);
+
+  logger.info("Sleeping ...");  
+  delay(1000);
 }

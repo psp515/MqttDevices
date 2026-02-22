@@ -18,7 +18,7 @@ namespace smartdevices::logging {
         Logger(LogLevel level) : _level(level) {}
         virtual ~Logger() {}
 
-        virtual void log(LogLevel level, const char* format, ...) = 0;
+        virtual void log(LogLevel level, const char* format, va_list args) = 0;
 
         // Convenience helpers
         virtual void info(const char* format, ...) {
