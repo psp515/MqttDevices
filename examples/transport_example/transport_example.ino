@@ -3,90 +3,117 @@
 #include <LittleFS.h>
 
 #include "JsonConfiguration.h"
-#include "SerialLogger.h"
+#include "Seriallogger.h"
 #include "MqttTransport.h"
 
 using namespace smartdevices::configuration;
 using namespace smartdevices::logging;
 using namespace smartdevices::transport;
 
-const char* filename = "/appsettings.json";
+const char* filename = "appsettings.json";
 
-void listFiles(String dir_path) {
-  Dir dir = LittleFS.openDir(dir_path);
-	while(dir.next()) {
-		if (dir.isFile()) {
-			// print file names
-			Serial.print("File: ");
-			Serial.println(dir_path + dir.fileName());
-		}
-		if (dir.isDirectory()) {
-			// print directory names
-			Serial.print("Dir: ");
-			Serial.println(dir_path + dir.fileName() + "/");
-		}
-	}
-}
-
-SerialLogger logger(Serial, LogLevel::DEBUG);
-JsonConfiguration config(logger, filename);
-MqttTransport transport(config, logger);
+SerialLogger* logger;
+JsonConfiguration* configuration;
+MqttTransport* transport;
 
 bool wifiInitialized = false;
 bool transportStarted = false;
 unsigned long lastSend = 0;
 
 void diag() {
-  Serial.println("---- SYSTEM INFO ----");
-  Serial.print("CPU Frequency: ");
-  Serial.println(rp2040.f_cpu());
+  logger->info("--- System Info --- CPU Freq: %d, Heap: %d ", rp2040.f_cpu(), rp2040.getFreeHeap());
+}
 
-  Serial.print("Free Heap: ");
-  Serial.println(rp2040.getFreeHeap());
-
-  Serial.print("Core: ");
-  Serial.println(get_core_num());
+void listFiles(String dir_path) {
+  Dir dir = LittleFS.openDir(dir_path);
+	while(dir.next()) {
+		if (dir.isFile()) {
+      logger->info("--- File: %s ", dir_path + dir.fileName());
+		}
+		if (dir.isDirectory()) {
+      logger->info("--- Dir: %s ", dir_path + dir.fileName() + "/");
+		}
+	}
 }
 
 void setup() {
+  delay(3000);
   Serial.begin(115200);
   while(!Serial);
 
-  Serial.println("Working ...");   
+  logger = new SerialLogger(Serial, LogLevel::DEBUG);
 
-  logger.info("----------- List files ----------- ");
-  listFiles("./");
+  logger->info("----------- Configuration Init ----------- ");
 
-  logger.info("----------- Configuration Init ----------- ");
-  bool configStatus = config.load();
+  listFiles("/");
+
+  configuration = new JsonConfiguration(*logger, filename);
+  bool configStatus = configuration->load();
 
   if (!configStatus) {
-    logger.error("Failed to initialize configuration.");
+    logger->error("Failed to initialize configuration.");
     delay(5000);
     return;
   }
 
-  logger.info("Config loaded.");
-  diag();
+  logger->info("----------- Transport Init ----------- ");
+  transport = new MqttTransport(*configuration, *logger);
+
+  logger->info("----------- Classes initialization successfull ----------- ");
+}
+
+void setClock()
+{
+  configTime(3 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+
+  Serial.print("Waiting for NTP time sync: ");
+  time_t now = time(nullptr);
+  while (now < 8 * 3600 * 2) {
+    delay(500);
+    Serial.print(".");
+    now = time(nullptr);
+  }
+  Serial.println("");
+  struct tm timeinfo;
+  gmtime_r(&now, &timeinfo);
+  Serial.print("Current time: ");
+  Serial.print(asctime(&timeinfo));
 }
 
 void loop() {
-  logger.info("----------- Wifi Init ----------- ");
+  logger->info("----------- Wifi Init ----------- ");
   diag();
+
+  logger->info("----------- Transport Init ----------- ");
+  if (!transportStarted) {
+
+    if (!transport->start()) {
+      logger->error("Failed to start MQTT transport.");
+      auto client = transport->getClient();
+      logger->info("Is connected %d", client.connected());
+      logger->info("MQTT state: %d", client.state());
+
+      delay(5000);
+      return;
+    }
+
+    transportStarted = true;
+    logger->info("MQTT transport started.");
+  }
 
   if (!wifiInitialized) {
 
     char ssid[64];
     char password[64];
 
-    if (!config.getString("wifi:ssid", ssid, sizeof(ssid))) {
-      logger.error("WiFi SSID missing in configuration.");
+    if (!configuration->getString("wifi:ssid", ssid, sizeof(ssid))) {
+      logger->error("WiFi SSID missing in configuration.");
       delay(5000);
       return;
     }
 
-    if (!config.getString("wifi:password", password, sizeof(password))) {
-      logger.error("WiFi password missing in configuration.");
+    if (!configuration->getString("wifi:password", password, sizeof(password))) {
+      logger->error("WiFi password missing in configuration.");
       delay(5000);
       return;
     }
@@ -94,7 +121,7 @@ void loop() {
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
 
-    logger.info("Connecting to WiFi...");
+    logger->info("Connecting to WiFi...");
 
     int retry = 0;
     while (WiFi.status() != WL_CONNECTED && retry < 20) {
@@ -105,41 +132,36 @@ void loop() {
     Serial.println(".");
 
     if (WiFi.status() == WL_CONNECTED) {
-      logger.info("WiFi connected.");
+      logger->info("WiFi connected.");
+      logger->info("Local ip: %s", WiFi.localIP());
+      setClock();
       wifiInitialized = true;
     } else {
-      logger.error("WiFi connection failed.");
+      logger->error("WiFi connection failed.");
       delay(5000);
       return;
     }
   }
 
-  logger.info("----------- Transport Init ----------- ");
-  diag();
+  logger->info("----------- Transport Loop ----------- ");
+  if (transportStarted) {
 
-  if (!transportStarted) {
+    bool status = transport->loop();
 
-    if (!transport->start()) {
-      logger.error("Failed to start MQTT transport.");
-      auto client = transport->getClient();
-      logger.info("Is connected %d", client.connected());
-      logger.info("MQTT state: %d", client.state());
-
-      delay(5000);
+    if (!status) {
+      logger->warn("MQTT transport not working.");
+      delay(500);
       return;
     }
 
-    transportStarted = true;
-    logger.info("MQTT transport started.");
   }
 
-  logger.info("----------- Transport Messaging ----------- ");
-  diag();
+  logger->info("----------- Transport Messaging ----------- ");
   if (transportStarted && millis() - lastSend > 10000) {
 
     char baseTopic[128];
-    if (!config.getString("mqtt:baseTopic", baseTopic, sizeof(baseTopic))) {
-      logger.error("Base topic missing.");
+    if (!configuration->getString("mqtt:baseTopic", baseTopic, sizeof(baseTopic))) {
+      logger->error("Base topic missing.");
       return;
     }
 
@@ -148,26 +170,18 @@ void loop() {
 
     TransportMessage msg(fullTopic, "device-alive");
 
-    logger.info("Before messge sent.");
+    logger->info("Before messge sent.");
     // TODO: Debug error here
 
     if (transport->send(msg)) {
-      logger.info("Message sent.");
+      logger->info("Message sent.");
     } else {
-      logger.error("Failed to send message.");
+      logger->error("Failed to send message.");
     }
 
     lastSend = millis();
   }
 
-  logger.info("----------- Transport Loop ----------- ");
-  diag();
-  if (transportStarted) {
-
-    transport->loop();
-
-  }
-
-  logger.info("Sleeping ...");  
+  logger->info("Sleeping ...");  
   delay(1000);
 }

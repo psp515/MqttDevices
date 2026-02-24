@@ -19,8 +19,7 @@ namespace smartdevices::transport {
     // ---------------------- Implementation
 
     MqttTransport::MqttTransport(Configuration& configuration, Logger& logger)
-        : Transport(configuration, logger)
-    {
+        : Transport(configuration, logger) {
         _instance = this;
 
         bool sslEnabled = false;
@@ -28,6 +27,7 @@ namespace smartdevices::transport {
 
         if (sslEnabled) {
             _sslClient = new WiFiClientSecure();
+            _sslClient->setTimeout(5000);
             _mqttClient = PubSubClient(*_sslClient);
         } else {
             _plainClient = new WiFiClient();
@@ -35,54 +35,42 @@ namespace smartdevices::transport {
         }
     }
 
-    MqttTransport::~MqttTransport()
-    {
+    MqttTransport::~MqttTransport() {
         delete _sslClient;
         delete _plainClient;
         _instance = nullptr;
     }
 
-    bool MqttTransport::start()
-    {
+    bool MqttTransport::start() {
         char url[1024] = "";
 
         if (!_configuration.getString("mqtt:url", url, sizeof(url))) {
             _logger.error("MQTT - URL missing in configuration.");
             return false;
-        }
+        } 
 
         int port = 1883;
-        if (_configuration.getInt("mqtt:port", port)) {
+        if (!_configuration.getInt("mqtt:port", port)) {
             _logger.warn("MQTT - Port not found in configuration, using default 1883.");
         }
         
+        _logger.info("Connecting to %s:%d", url, port);
+
         initializeCaCertificate();
 
         _mqttClient.setServer(url, port);
 
-        _mqttClient.setCallback(MqttTransport::mqttCallbackStatic);
+        //_mqttClient.setCallback(MqttTransport::mqttCallbackStatic);
 
-        reconnect();
-
-        return _mqttClient.connected();
+        return true;
     }
 
     bool MqttTransport::reconnect()
     {
         if (_mqttClient.connected()) {
-            _logger.debug("MQTT - Already connected, no need to reconnect.");
+            _logger.warn("MQTT - Already connected, no need to reconnect.");
             return true;
         }
-
-        long now = millis();
-
-        if (now - lastReconnectAttempt < 5000 && lastReconnectAttempt != 0) {
-            
-            _logger.debug("MQTT - Reconnect attempted too recently, waiting before next attempt.");
-            return false;
-        }
-
-        lastReconnectAttempt = now;
 
         char baseTopic[128] = "";
 
@@ -96,33 +84,38 @@ namespace smartdevices::transport {
             _logger.warn("MQTT - baseclient ID missing in configuration, using default 'Client'.");
         }
 
-        int i = 0;
-
-        while (!_mqttClient.connected() && i < 10) {
-            char clientId[128] = "Client"; 
-
-            uint16_t randNum = random(0xffff);
-            snprintf(clientId, sizeof(clientId), "%s-%04X", baseClientId, randNum);
-
-            int state = _mqttClient.connect(clientId);
-
-            if (state == 0) {
-
-                for (auto& callback : _callbacks) {
-                    char fullTopic[128];
-                    snprintf(fullTopic, sizeof(fullTopic), "%s/%s", baseTopic, callback.path);
-                    _mqttClient.subscribe(fullTopic);
-                }
-
-            } else {
-                _logger.warn("MQTT - Failed to connect with state %d, retrying in 5 seconds...", state);
-                delay(5000);
-            }
-
-            i++;
+        char username[256] = "";
+        if (!_configuration.getString("mqtt:username", username, sizeof(username))){
+            _logger.error("MQTT - missing username.");
+            return false;
         }
 
-        return _mqttClient.connected();
+        char password[256] = "";
+        if (!_configuration.getString("mqtt:password", password, sizeof(password))){
+            _logger.error("MQTT - missing password.");
+            return false;
+        }
+
+        _logger.info("Connecting client %s with username %s, base topic: %s", baseClientId, username, baseTopic);
+        _logger.debug("Connecting client %s with password: %s ", baseClientId, password);
+
+        int state = _mqttClient.connect(baseClientId, username, password);
+
+        if (state == 0) {
+
+            for (auto& callback : _callbacks) {
+                char fullTopic[128];
+                snprintf(fullTopic, sizeof(fullTopic), "%s/%s", baseTopic, callback.path);
+                _logger.info("MQTT - Subscribing to topic: %s", fullTopic);
+                _mqttClient.subscribe(fullTopic);
+            }
+
+            return true;
+
+        } else {
+            _logger.warn("MQTT - Failed to connect with state %d...", state);
+            return false;
+        }
     }
 
     bool MqttTransport::send(TransportMessage message)
@@ -192,8 +185,7 @@ namespace smartdevices::transport {
         _configuration.getBool("mqtt:ssl:enabled", secureClientEnabled);
 
         if (!secureClientEnabled) {
-            _logger.warn("MQTT SSL - operating in insecure mode, certificates will not be validated.");
-            _sslClient->setInsecure();
+            _logger.warn("MQTT SSL - not enabled.");
             return true;
         }
 
