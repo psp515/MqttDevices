@@ -3,55 +3,176 @@
 #include <SoftwareSerial.h>
 #include <String.h>
 #include <DHT.h>
+#include <ESP8266WiFi.h>
+#include <PubSubClient.h>
+
+#include "hardware/watchdog.h"
 
 #include "Logger.h"
 #include "SerialLogger.h"
-
-//#include "MqttTransport.h"
 #include "Configuration.h"
 #include "JsonConfiguration.h"
 
 #define DHTPIN 14  
 #define DHTTYPE DHT22  
 
-#define RX_Pin 5
-#define TX_Pin 4
-#define PRESENCE_Pin 15
+#define HUMAN_PRESENCE_RX_Pin 5
+#define HUMAN_PRESENCE_TX_Pin 4
+#define HUMAN_PRESENCE_Pin 15
 
 using namespace smartdevices::logging;
 using namespace smartdevices::configuration;
 
-SoftwareSerial mySerial = SoftwareSerial(RX_Pin, TX_Pin);
+SoftwareSerial mySerial = SoftwareSerial(HUMAN_PRESENCE_RX_Pin, HUMAN_PRESENCE_TX_Pin);
 HumanStaticLite radar = HumanStaticLite(&mySerial);
-
 SerialLogger serialLogger(Serial);
+Logger& logger = serialLogger;
+JsonConfiguration jsonConfiguration(serialLogger, "./appsettings.json");
+Configuration& configuration = jsonConfiguration;
 DHT dht(DHTPIN, DHTTYPE);
 
-JsonConfiguration jsonConfiguration(serialLogger, "./appsettings.json");
+BearSSL::WiFiClientSecure wifiClientSecure;
+PubSubClient client(wifiClientSecure);
 
-Logger& logger = serialLogger;
-Configuration& configuration = jsonConfiguration;
+const char* mqtt_server = "da9c85bf397c4910b03ad4656cf8cd67.s1.eu.hivemq.cloud";
+const char* mqtt_user = "hivemq.webclient.1771447021829";
+const char* mqtt_password = "A65*#iJ4FG<Td?getQs0";
 
-void setup() {
-  Serial.begin(115200);
-  mySerial.begin(115200);
-  dht.begin();
-  configuration.load();
+void callback(char* topic, byte* payload, unsigned int length) {
 
-  if (!LittleFS.begin()) {
-    logger.error("Failed to start filesystem");
+  logger.info("[Topic: %s] Message arrived.", topic);
+
+  for (int i = 0; i < length; i++) {
+    Serial.print((char)payload[i]);
   }
-
-  char password[64];
-  configuration.getString("wifi:password", password, sizeof(password));
-
-  pinMode(PRESENCE_Pin, INPUT); 
-
-  logger.info("Device initialized!");
+  Serial.println();
 }
 
+bool setupWifi() {
+  delay(10);
+  
+  char ssid[64] = "";
+  char password[64] = "";
 
-int i = 0;
+  if (!configuration.getString("wifi:ssid", ssid, sizeof(ssid))) {
+    logger.error("WiFi SSID missing in configuration.");
+    delay(5000);
+    return false;
+  }
+
+  if (!configuration.getString("wifi:password", password, sizeof(password))) {
+    logger.error("WiFi password missing in configuration.");
+    delay(5000);
+    return false;
+  }
+
+  logger.info("Connecting to: %s", ssid);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    logger.info("Connectiong wifi...");
+  }
+
+  randomSeed(micros());
+  logger.info("Wifi connected: %s. Ip adress %s", ssid, WiFi.localIP());
+  return true;
+}
+
+bool setupClock() {
+  configTime(3 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+
+  logger.info("Syncing NTP time.");
+
+  time_t now = time(nullptr);
+  while (now < 8 * 3600 * 2) {
+    delay(500);
+    now = time(nullptr);
+  }
+
+  struct tm timeinfo;
+  gmtime_r(&now, &timeinfo);
+
+  logger.info("NTP time: %s", asctime(&timeinfo));
+
+  return true;
+}
+
+bool setupCaCertificate() {
+    logger.info("MQTT SSL - initializing CA certificate.");
+
+    bool secureClientEnabled = false;
+    configuration.getBool("mqtt:ssl:enabled", secureClientEnabled);
+
+    if (!secureClientEnabled) {
+        logger.warn("MQTT SSL - not enabled.");
+        return true;
+    }
+
+    bool secure = false;
+    configuration.getBool("mqtt:ssl:secure", secure);
+
+    if (!secure) {
+        logger.warn("MQTT SSL - operating in secure mode, but certificates will not be validated.");
+        wifiClientSecure.setInsecure();
+        return true;
+    }
+
+    char certFileName[128];
+
+    if (!configuration.getString("mqtt:ssl:certFile", certFileName, sizeof(certFileName))) {
+        logger.error("MQTT SSL - certificate file not configured, operating in insecure mode.");
+        return false;
+    }
+
+    if (!LittleFS.exists(certFileName)) {
+        logger.error("MQTT SSL - certificate file not found, operating in insecure mode.");
+        return false;
+    }
+
+    File f = LittleFS.open(certFileName, "r");
+
+    if (!f) {
+        logger.error("MQTT SSL - failed to open certificate file.");
+        return false;
+    }
+
+    BearSSL::X509List* serverTrustedCA = new BearSSL::X509List(f);
+    f.close();
+    
+    if (!serverTrustedCA) {
+        logger.error("MQTT SSL - failed to parse certificate file.");
+        return false;
+    }
+
+    wifiClientSecure.setTrustAnchors(serverTrustedCA);
+
+    logger.info("MQTT SSL - certificate loaded successfully.");
+
+    return true;
+}
+
+bool setupMqttClient() {
+  char url[1024] = "";
+
+  if (!configuration.getString("mqtt:url", url, sizeof(url))) {
+      logger.error("MQTT - URL missing in configuration.");
+      return false;
+  } 
+
+  int port = 1883;
+  if (!configuration.getInt("mqtt:port", port)) {
+      logger.warn("MQTT - Port not found in configuration, using default 1883.");
+  }
+  
+  logger.info("Connecting to %s:%d", url, port);
+
+  client.setServer(mqtt_server, 8883);
+  client.setCallback(callback);
+  return true;
+}
+
 
 void listFiles(String dir_path) {
   Dir dir = LittleFS.openDir(dir_path);
@@ -69,19 +190,138 @@ void listFiles(String dir_path) {
 	}
 }
 
+void setup() {
+  // --------- Setup
+  delay(5000);
+  Serial.begin(115200);
+  mySerial.begin(115200);
+  while(!Serial);
+
+  if (!LittleFS.begin()) {
+    logger.error("Failed to start filesystem");
+    delay(5000);
+    watchdog_reboot(0, 0, 0);
+  }
+
+  logger.info("----------");
+  listFiles("/");
+  logger.info("----------");
+  listFiles("./");
+  logger.info("----------");
+  listFiles("");
+
+  // --------- Initialize
+  logger.info("--------- Initializing");
+  pinMode(HUMAN_PRESENCE_Pin, INPUT); 
+  dht.begin();
+  configuration.load();
+  radar.HumanStatic_func(false);
+
+  // --------- Start Connections
+  if (!setupCaCertificate()) {
+    logger.error("Failed to initialize wifi secure client.");
+    delay(5000);
+    watchdog_reboot(0, 0, 0);
+  }
+
+  if (!setupWifi()) {
+    logger.error("Failed to connect with wifi.");
+    delay(5000);
+    watchdog_reboot(0, 0, 0);
+  }
+
+  if (!setupClock()) {
+    logger.error("Failed to connect with wifi.");
+    delay(5000);
+    watchdog_reboot(0, 0, 0);
+  }
+
+  if (!setupMqttClient()) {
+    logger.error("Failed to setup mqtt");
+    delay(5000);
+    watchdog_reboot(0, 0, 0);
+  }
+
+  logger.info("--------- Initialized");
+}
+
+int i = 0;
+int timeout = 100;
 static int lastButtonState = LOW; 
 
+bool loop_reconnect() {
+  char err_buf[256] = "";
+
+  char baseClientId[64] = "Client";
+  if (!configuration.getString("mqtt:clientId", baseClientId, sizeof(baseClientId))){
+    logger.warn("MQTT - baseclient ID missing in configuration, using default 'Client'.");
+    return false;
+  }
+
+  char username[256] = "";
+  if (!configuration.getString("mqtt:username", username, sizeof(username))){
+    logger.error("MQTT - missing username.");
+    return false;
+  }
+
+  char password[256] = "";
+  if (!configuration.getString("mqtt:password", password, sizeof(password))){
+    logger.error("MQTT - missing password.");
+    return false;
+  }
+
+  const char* willTopic   = "device/room/sensor/set/1/status";
+  const char* willMessage = "false";
+  
+  while (true) {
+    logger.info("Connecting MQTT...");
+
+    if (client.connected()) {
+      break;
+    }
+
+    if (client.connect("Test", mqtt_user, mqtt_password, willTopic, 1, true, willMessage)) {
+      logger.info("Mqtt Connected.");
+      client.publish("outTopic", "hello world");
+      client.subscribe("inTopic");
+    } else {
+      logger.error("--- System Info --- CPU Freq: %d, Heap: %d ", rp2040.f_cpu(), rp2040.getFreeHeap());
+      logger.warn("Mqtt not connected.");
+      wifiClientSecure.getLastSSLError(err_buf, sizeof(err_buf));
+      logger.warn("SSL error: %s", err_buf);
+    }
+  }
+
+  return true;
+}
+
 void loop() {
-  radar.HumanStatic_func(false);
   i++;
+
+  //logger.info("--------- Monitor WIFI");
+
+  //logger.info("--------- Monitor MQTT");
+
+  if (!client.connected()) {
+    bool mqttState = loop_reconnect();
+
+    if (!mqttState) {
+      logger.info("Failed to connect with mqtt server.");
+      return;
+    }
+
+  }
+  
+  client.loop();
+
+  //logger.info("--------- Monitor DHT");
 
   if (i%50 == 0) {
     i = 0;
 
     float h = dht.readHumidity();
-    float t = dht.readTemperature();     // Celsius
-    float f = dht.readTemperature(true); // Fahrenheit
-    listFiles("./");
+    float t = dht.readTemperature();
+    float f = dht.readTemperature(true);
 
     if (isnan(h) || isnan(t) || isnan(f)) {
       logger.error("Failed to read from DHT sensor!");
@@ -91,7 +331,9 @@ void loop() {
     Serial.println(String("Temp: ") + dht.readTemperature() + "°C  Hum: " + dht.readHumidity() + "%");
   }
 
-  int buttonState = digitalRead(PRESENCE_Pin);
+  //logger.info("--------- Monitor Presence");
+
+  int buttonState = digitalRead(HUMAN_PRESENCE_Pin);
 
   if (buttonState != lastButtonState) {
       lastButtonState = buttonState;
@@ -103,59 +345,5 @@ void loop() {
       }
   }
 
-  if(radar.radarStatus != 0x00){
-    
-    //radar.showData();
-
-    switch(radar.radarStatus){
-      case SOMEONE:
-        logger.info("Someone is here.");
-        logger.info("---------------------------------");
-        break;
-      case NOONE:
-        logger.info("Nobody here.");
-        logger.info("---------------------------------");
-        break;
-      case NOTHING:
-        logger.info("No human activity messages.");
-        logger.info("---------------------------------");
-        break;
-      case SOMEONE_STOP:
-        logger.info("Someone stop");
-        logger.info("---------------------------------");
-        break;
-      case SOMEONE_MOVE:
-        logger.info("Someone moving");
-        logger.info("---------------------------------");
-        break;
-      case HUMANPARA:
-        logger.info("The parameters of human body signs are: ");
-        logger.info(String(radar.bodysign_val, DEC).c_str());
-        logger.info("---------------------------------");
-        break;
-      case SOMEONE_CLOSE:
-        logger.info("Someone is closing");
-        logger.info("---------------------------------");
-        break;
-      case SOMEONE_AWAY:
-        logger.info("Someone is staying away");
-        logger.info("---------------------------------");
-        break;
-      case DETAILMESSAGE:
-        logger.info("Spatial static values: ");
-        logger.info(String(radar.static_val, DEC).c_str());
-        logger.info("Distance to stationary object: ");
-        logger.info(String(radar.dynamic_val, DEC).c_str());
-        logger.info("Spatial dynamic values: ");
-        logger.info(String(radar.dis_static, DEC).c_str());
-        logger.info("Distance from the movement object: ");
-        logger.info(String(radar.dis_move, DEC).c_str());
-        logger.info("Speed of moving object: ");
-        logger.info(String(radar.speed, DEC).c_str());
-        logger.info("---------------------------------");
-        break;
-    }
-  }
-
-  delay(200);
+  delay(timeout);
 }
