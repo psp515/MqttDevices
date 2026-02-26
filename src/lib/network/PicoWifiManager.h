@@ -32,12 +32,12 @@ namespace smartdevices::network {
         bool setup() override {
 
             if (!_config.getString("wifi:ssid", _ssid, sizeof(_ssid))) {
-                _logger.error("WiFi SSID missing in configuration.");
+                _logger.error("[WiFi] SSID missing in configuration.");
                 return false;
             }
 
             if (!_config.getString("wifi:password", _password, sizeof(_password))) {
-                _logger.error("WiFi password missing in configuration.");
+                _logger.error("[WiFi] Password missing in configuration.");
                 return false;
             }
 
@@ -53,7 +53,7 @@ namespace smartdevices::network {
 
                 if (!_connected) {
                     _connected = true;
-                    _logger.info("WiFi connected. IP: %s", WiFi.localIP().toString().c_str());
+                    _logger.info("[WiFi] Connected. IP: %s", WiFi.localIP().toString().c_str());
                 }
 
                 _reconnectInterval = 5000;
@@ -70,7 +70,7 @@ namespace smartdevices::network {
                 _firstFailureTime = now;
 
             if (now - _firstFailureTime > 300000) {
-                _logger.critical("WiFi offline too long. Triggering watchdog reset.");
+                _logger.critical("[WiFi] Offline too long. Triggering watchdog reset.");
                 triggerWatchdogReset();
             }
 
@@ -79,8 +79,7 @@ namespace smartdevices::network {
 
             _lastReconnectAttempt = now;
 
-            _logger.warn("WiFi reconnect attempt. Interval: %lu ms",
-                         _reconnectInterval);
+            _logger.warn("[WiFi] Reconnect attempt. Interval: %lu ms", _reconnectInterval);
 
             WiFi.disconnect();
             WiFi.begin(_ssid, _password);
@@ -110,7 +109,7 @@ namespace smartdevices::network {
 
         bool _connected;
         unsigned long _firstFailureTime;
-        
+
         bool waitForConnection(unsigned long timeoutMs) {
 
             unsigned long start = millis();
@@ -119,13 +118,13 @@ namespace smartdevices::network {
                 delay(250);
 
                 if (millis() - start > timeoutMs) {
-                    _logger.error("Initial WiFi connection timeout.");
+                    _logger.error("[WiFi] Initial connection timeout.");
                     return false;
                 }
             }
 
             _connected = true;
-            _logger.info("WiFi connected. IP: %s",
+            _logger.info("[WiFi] Connected. IP: %s",
                          WiFi.localIP().toString().c_str());
 
             return true;

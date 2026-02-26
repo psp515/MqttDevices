@@ -1,6 +1,7 @@
 #ifndef TRANSPORT_H
 #define TRANSPORT_H
 
+#include <string>
 #include <vector>
 
 #include "Logger.h"
@@ -11,47 +12,50 @@ using namespace smartdevices::configuration;
 
 namespace smartdevices::transport {
 
-    class TransportMessage {
-    public:
-      TransportMessage() : payload(nullptr), path(nullptr) {}
-      TransportMessage(const char* _path, const char* _payload) : payload(_payload), path(_path) {}
+  class TransportMessage {
+  public:
+    TransportMessage() = default;
 
-      ~TransportMessage() {
-        if (path) delete[] path;
-        if (payload) delete[] payload;
-      }
+    TransportMessage(const std::string& _path, const std::string& _payload) : path(_path), payload(_payload) {}
 
-      const char* getPath() const { return path; }
-      const char* getPayload() const { return payload; }
+    const std::string& getPath() const noexcept {
+        return path;
+    }
 
-    private: 
-      const char* payload = nullptr;
-      const char* path = nullptr; 
-    };
+    const std::string& getPayload() const noexcept {
+        return payload;
+    }
 
-    using MessageCallback = void (*)(const TransportMessage&);
+  protected:
+    std::string path;
+    std::string payload;
+  };
 
-    struct TransportCallback {
-      const char* path;
-      MessageCallback callback;
-    };
+  using MessageCallback = void (*)(const TransportMessage&);
 
-    class Transport {
-    public:
-      explicit Transport(Configuration& configuration, Logger& logger) : _configuration(configuration), _logger(logger) {};
+  struct TransportCallback {
+    std::string path;
+    MessageCallback callback;
+  };
 
-      virtual bool start() = 0;
-      virtual bool reconnect() = 0;
+  class Transport {
+  public:
+    explicit Transport(Configuration& configuration, Logger& logger) : _configuration(configuration), _logger(logger) {}
+    virtual ~Transport() = default;
 
-      virtual bool send(TransportMessage message) = 0;
-      virtual bool loop() = 0;
-      virtual bool observe(const char* path, MessageCallback callback) = 0;
+    virtual bool setup() = 0;
+    virtual bool loop() = 0;
+    virtual bool reconnect() = 0;
 
-    protected:
+    virtual bool send(const TransportMessage& message) = 0;
+    virtual bool observe(const std::string& path, MessageCallback callback) = 0;
+
+  protected:
       Logger& _logger;
       Configuration& _configuration;
       std::vector<TransportCallback> _callbacks;
-    };
+  };
+
 }
 
 #endif
