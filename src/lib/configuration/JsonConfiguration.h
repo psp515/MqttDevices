@@ -8,9 +8,9 @@
 #include "Configuration.h"
 #include "Logger.h"
 
-using namespace smartdevices::logging;
-
 namespace smartdevices::configuration {
+    
+    using namespace smartdevices::logging;
 
     class JsonConfiguration final : public Configuration
     {

@@ -5,13 +5,17 @@
 #include <DHT.h>
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
-
 #include "hardware/watchdog.h"
 
+// ------- Interfaces
 #include "Logger.h"
-#include "SerialLogger.h"
 #include "Configuration.h"
+#include "WifiManager.h"
+
+// ------- Implementations
+#include "SerialLogger.h"
 #include "JsonConfiguration.h"
+#include "PicoWifiManager.h"
 
 #define DHTPIN 14  
 #define DHTTYPE DHT22  
@@ -22,21 +26,35 @@
 
 using namespace smartdevices::logging;
 using namespace smartdevices::configuration;
+using namespace smartdevices::network;
 
 SoftwareSerial mySerial = SoftwareSerial(HUMAN_PRESENCE_RX_Pin, HUMAN_PRESENCE_TX_Pin);
 HumanStaticLite radar = HumanStaticLite(&mySerial);
+
 SerialLogger serialLogger(Serial);
-Logger& logger = serialLogger;
 JsonConfiguration jsonConfiguration(serialLogger, "./appsettings.json");
+PicoWifiManager wifiManagerRp(jsonConfiguration, serialLogger);
+
+Logger& logger = serialLogger;
 Configuration& configuration = jsonConfiguration;
+WifiManager& wifi = wifiManagerRp;
+
 DHT dht(DHTPIN, DHTTYPE);
 
 BearSSL::WiFiClientSecure wifiClientSecure;
 PubSubClient client(wifiClientSecure);
 
-const char* mqtt_server = "da9c85bf397c4910b03ad4656cf8cd67.s1.eu.hivemq.cloud";
-const char* mqtt_user = "hivemq.webclient.1771447021829";
-const char* mqtt_password = "A65*#iJ4FG<Td?getQs0";
+// class SecureMqttTransport : public Transport {
+// public:
+
+
+
+// private:
+
+
+
+// };
+
 
 void callback(char* topic, byte* payload, unsigned int length) {
 
@@ -46,38 +64,6 @@ void callback(char* topic, byte* payload, unsigned int length) {
     Serial.print((char)payload[i]);
   }
   Serial.println();
-}
-
-bool setupWifi() {
-  delay(10);
-  
-  char ssid[64] = "";
-  char password[64] = "";
-
-  if (!configuration.getString("wifi:ssid", ssid, sizeof(ssid))) {
-    logger.error("WiFi SSID missing in configuration.");
-    delay(5000);
-    return false;
-  }
-
-  if (!configuration.getString("wifi:password", password, sizeof(password))) {
-    logger.error("WiFi password missing in configuration.");
-    delay(5000);
-    return false;
-  }
-
-  logger.info("Connecting to: %s", ssid);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    logger.info("Connectiong wifi...");
-  }
-
-  randomSeed(micros());
-  logger.info("Wifi connected: %s. Ip adress %s", ssid, WiFi.localIP());
-  return true;
 }
 
 bool setupClock() {
@@ -153,13 +139,17 @@ bool setupCaCertificate() {
     return true;
 }
 
-bool setupMqttClient() {
-  char url[1024] = "";
+char url[1024] = "";
 
+bool setupMqttClient() {
   if (!configuration.getString("mqtt:url", url, sizeof(url))) {
       logger.error("MQTT - URL missing in configuration.");
       return false;
-  } 
+  }
+
+  for (size_t i = 0; i < strlen(url); i++) {
+    logger.info("url[%d] = %d", i, url[i]);
+  }
 
   int port = 1883;
   if (!configuration.getInt("mqtt:port", port)) {
@@ -168,7 +158,7 @@ bool setupMqttClient() {
   
   logger.info("Connecting to %s:%d", url, port);
 
-  client.setServer(mqtt_server, 8883);
+  client.setServer(url, port);
   client.setCallback(callback);
   return true;
 }
@@ -204,28 +194,19 @@ void setup() {
   }
 
   logger.info("----------");
-  listFiles("/");
-  logger.info("----------");
   listFiles("./");
-  logger.info("----------");
-  listFiles("");
 
   // --------- Initialize
   logger.info("--------- Initializing");
   pinMode(HUMAN_PRESENCE_Pin, INPUT); 
   dht.begin();
-  configuration.load();
   radar.HumanStatic_func(false);
+  configuration.load();
+  wifi.setup();
 
   // --------- Start Connections
   if (!setupCaCertificate()) {
     logger.error("Failed to initialize wifi secure client.");
-    delay(5000);
-    watchdog_reboot(0, 0, 0);
-  }
-
-  if (!setupWifi()) {
-    logger.error("Failed to connect with wifi.");
     delay(5000);
     watchdog_reboot(0, 0, 0);
   }
@@ -272,23 +253,24 @@ bool loop_reconnect() {
 
   const char* willTopic   = "device/room/sensor/set/1/status";
   const char* willMessage = "false";
+
   
   while (true) {
-    logger.info("Connecting MQTT...");
+  logger.info("Credentails for mqtt connect: %s, %s", username, password);
 
     if (client.connected()) {
       break;
     }
 
-    if (client.connect("Test", mqtt_user, mqtt_password, willTopic, 1, true, willMessage)) {
+    if (client.connect("Test", username, password, willTopic, 1, true, willMessage)) {
       logger.info("Mqtt Connected.");
       client.publish("outTopic", "hello world");
       client.subscribe("inTopic");
     } else {
-      logger.error("--- System Info --- CPU Freq: %d, Heap: %d ", rp2040.f_cpu(), rp2040.getFreeHeap());
-      logger.warn("Mqtt not connected.");
+      logger.error("--- Mqtt not connected --- CPU Freq: %d, Heap: %d ", rp2040.f_cpu(), rp2040.getFreeHeap());
       wifiClientSecure.getLastSSLError(err_buf, sizeof(err_buf));
       logger.warn("SSL error: %s", err_buf);
+      delay(2000);
     }
   }
 
@@ -298,7 +280,14 @@ bool loop_reconnect() {
 void loop() {
   i++;
 
-  //logger.info("--------- Monitor WIFI");
+  bool wifiStatus = wifi.loop();
+  if (!wifiStatus) {
+    logger.warn("Wifi connection failed...");
+    delay(500);
+    return;
+  }
+
+  
 
   //logger.info("--------- Monitor MQTT");
 
@@ -316,7 +305,7 @@ void loop() {
 
   //logger.info("--------- Monitor DHT");
 
-  if (i%50 == 0) {
+  if (i%250 == 0) {
     i = 0;
 
     float h = dht.readHumidity();
