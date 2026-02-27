@@ -12,12 +12,14 @@
 #include "Configuration.h"
 #include "WifiManager.h"
 #include "Transport.h"
+#include "ClockService.h"
 
 // ------- Implementations
 #include "SerialLogger.h"
 #include "JsonConfiguration.h"
 #include "PicoWifiManager.h"
 #include "SecureMqttTransport.h"
+#include "NtpClockService.h"
 
 #define DHTPIN 14  
 #define DHTTYPE DHT22  
@@ -30,11 +32,13 @@ using namespace smartdevices::logging;
 using namespace smartdevices::configuration;
 using namespace smartdevices::network;
 using namespace smartdevices::transport;
+using namespace smartdevices::clock;
 
 SerialLogger serialLogger(Serial);
 JsonConfiguration jsonConfiguration(serialLogger, "./appsettings.json");
 PicoWifiManager wifiManagerRp(jsonConfiguration, serialLogger);
 SecureMqttTransport secureTransport(jsonConfiguration, serialLogger);
+NtpClockService nptTimeService(jsonConfiguration, serialLogger);
 
 SoftwareSerial mySerial = SoftwareSerial(HUMAN_PRESENCE_RX_Pin, HUMAN_PRESENCE_TX_Pin);
 HumanStaticLite radar = HumanStaticLite(&mySerial);
@@ -44,29 +48,10 @@ Logger& logger = serialLogger;
 Configuration& configuration = jsonConfiguration;
 WifiManager& wifi = wifiManagerRp;
 Transport& transport = secureTransport;
-
-bool setupClock() {
-  configTime(3 * 3600, 0, "pool.ntp.org", "time.nist.gov");
-
-  logger.info("Syncing NTP time.");
-
-  time_t now = time(nullptr);
-  while (now < 8 * 3600 * 2) {
-    delay(500);
-    now = time(nullptr);
-  }
-
-  struct tm timeinfo;
-  gmtime_r(&now, &timeinfo);
-
-  logger.info("NTP time: %s", asctime(&timeinfo));
-
-  return true;
-}
+ClockService& timeService = nptTimeService;
 
 void setup() {
-  // --------- Setup
-  delay(5000);
+  delay(2000);
   Serial.begin(115200);
   mySerial.begin(115200);
   while(!Serial);
@@ -77,7 +62,6 @@ void setup() {
     watchdog_reboot(0, 0, 0);
   }
 
-  // --------- Initialize
   logger.info("--------- Initializing");
   pinMode(HUMAN_PRESENCE_Pin, INPUT); 
   dht.begin();
@@ -85,22 +69,22 @@ void setup() {
   configuration.load();
 
   if (!wifi.setup()) {
-    logger.error("Failed to initialize wifi client.");
-    delay(5000);
+    logger.error("Failed to initialize wifi client. Fix configuration.");
+    delay(15000);
+    watchdog_reboot(0, 0, 0);
   }
 
-  if (!setupClock()) {
-    logger.error("Failed to connect with wifi.");
-    delay(5000);
+  if (!timeService.setup()) {
+    logger.error("Failed to initialize ntp. Fix configuration.");
+    delay(15000);
     watchdog_reboot(0, 0, 0);
   }
 
   if (!transport.setup()) {
-    logger.error("Failed to initialize transport.");
-    delay(5000);
+    logger.error("Failed to initialize transport. Fix configuration.");
+    delay(15000);
+    watchdog_reboot(0, 0, 0);
   }
-
-  logger.info("--------- Initialized");
 }
 
 int i = 0;
@@ -113,7 +97,15 @@ void loop() {
   bool wifiStatus = wifi.loop();
   if (!wifiStatus) {
     logger.warn("Wifi connection failed...");
-    delay(500);
+    delay(timeout * 2);
+    return;
+  }
+
+  //--------- Monitor Tiome
+  bool timeStatus = timeService.loop();
+  if (!timeStatus) {
+    logger.warn("Time synchronization failed...");
+    delay(timeout * 2);
     return;
   }
 
@@ -123,14 +115,15 @@ void loop() {
 
   if (!transportStatus) {
     logger.warn("Transport connection failed...");
-    delay(500);
+    delay(timeout * 2);
     return;
   }
 
   //--------- Device functions
   i++;
   
-  // if recconnected send update
+  // if recconnected send update functions update
+
   //--------- Monitor Device Heap
   if (i%100 == 0) {
     logger.info("--- System Info, CPU Freq: %d, Heap: %d ", rp2040.f_cpu(), rp2040.getFreeHeap());

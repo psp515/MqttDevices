@@ -2,7 +2,10 @@
 # List of library folders to copy (names must match folders in src\lib\)
 $Libraries = @(
     "logging",
-    "configuration"
+    "configuration",
+    "transport",
+    "clock",
+    "network"
 )
 
 # Resolve script directory

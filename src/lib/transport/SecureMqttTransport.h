@@ -84,10 +84,7 @@ public:
         if (!_configuration.getInt("mqtt:port", _port))
             return false;
 
-        if (!setupCaCertificate()) {
-            _wifiClientSecure.setInsecure();
-        }
-
+        setupCaCertificate();
         _client.setServer(_url, _port);
         _client.setCallback(mqttCallbackStatic);
 
@@ -128,7 +125,6 @@ public:
                 _connected = true;
                 _reconnectInterval = _defaultReconnectInterval;
 
-                // resubscribe after reconnect
                 for (auto& cb : _callbacks) {
                     _client.subscribe(cb.path.c_str());
                 }
@@ -207,7 +203,9 @@ private:
         if (!_configuration.getBool("mqtt:ssl:enabled", secureEnabled) ||
             !secureEnabled)
         {
-            return false;
+            _logger.info("[MQTT] SSL/TLS is disabled in configuration. Setting insecure mode.");
+            _wifiClientSecure.setInsecure();
+            return true;
         }
 
         delete _serverTrustedCA;
@@ -215,25 +213,33 @@ private:
 
         char certFile[128];
 
-        if (!_configuration.getString("mqtt:ssl:certFile",
-                                      certFile,
-                                      sizeof(certFile)))
+        if (!_configuration.getString("mqtt:ssl:certFile", certFile, sizeof(certFile))) {
+            
+            _logger.error("[MQTT] SSL/TLS is enabled but 'mqtt:ssl:certFile' is not set in configuration.");
             return false;
+        }
 
-        if (!LittleFS.exists(certFile))
+        if (!LittleFS.exists(certFile)) {
+            _logger.error("[MQTT] SSL/TLS certificate file '%s' not found in LittleFS.", certFile);
             return false;
+        }
 
         File f = LittleFS.open(certFile, "r");
-        if (!f)
+        if (!f) {
+            _logger.error("[MQTT] Failed to open SSL/TLS certificate file '%s'.", certFile);
             return false;
+        }
 
         _serverTrustedCA = new BearSSL::X509List(f);
         f.close();
 
-        if (!_serverTrustedCA)
+        if (!_serverTrustedCA) {
+            _logger.error("[MQTT] Failed to load SSL/TLS certificate from file '%s'.", certFile);
             return false;
+        }
 
         _wifiClientSecure.setTrustAnchors(_serverTrustedCA);
+        _logger.info("[MQTT] SSL/TLS certificate loaded successfully from '%s'.", certFile);
         return true;
     }
 
