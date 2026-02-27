@@ -21,7 +21,9 @@ public:
 
     MqttTransportMessage(const char* topic,
                          const uint8_t* payload,
-                         unsigned int length)
+                         unsigned int length,
+                         bool retained = false)
+        : retained(retained)
     {
         if (topic) {
             path = std::string(topic);
@@ -34,6 +36,13 @@ public:
             );
         }
     }
+
+    bool isRetained() const {
+        return retained;
+    }
+
+private:
+    bool retained;
 };
 
 class SecureMqttTransport final : public Transport {
@@ -121,7 +130,7 @@ public:
                     true,
                     _stateDisconnectedPayload))
             {
-                _client.publish(_stateTopic, _stateConnectedPayload);
+                _client.publish(_stateTopic, _stateConnectedPayload, true);
                 _connected = true;
                 _reconnectInterval = _defaultReconnectInterval;
 
@@ -149,8 +158,15 @@ public:
         if (!_client.connected())
             return false;
 
+        std::string fullPath;
+        if (!message.getPath().empty() && message.getPath()[0] != '/') {
+            fullPath = std::string(_baseTopic) + "/" + message.getPath();
+        } else {
+            fullPath = message.getPath();
+        }
+
         return _client.publish(
-            message.getPath().c_str(),
+            fullPath.c_str(),
             message.getPayload().c_str()
         );
     }

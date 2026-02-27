@@ -44,6 +44,7 @@ public:
                      _server1.c_str(), _server2.c_str());
 
         bool valid = _config.getInt("ntp:updateIntervalMs", _resyncInterval);
+        
         if (valid) {
             _logger.info("[NTP] Update interval set to %lu ms", _resyncInterval);
         } else {
@@ -66,6 +67,7 @@ public:
 
         if (!_started)
         {
+            _logger.info("[NTP] Starting SNTP sync.");
             startSntp();
             _started = true;
             _lastSyncTrigger = nowMs;
@@ -105,10 +107,7 @@ private:
 
     void startSntp()
     {
-        _logger.info("[NTP] Starting SNTP sync.");
-
         configTime(0, 0, _server1.c_str(), _server2.c_str());
-
         _timeValid = false;
     }
 
@@ -124,8 +123,10 @@ private:
 
                 struct tm tmInfo;
                 gmtime_r(&nowTime, &tmInfo);
+                char timeBuffer[64];
+                strftime(timeBuffer, sizeof(timeBuffer), "%d %B %Y %H:%M:%S", &tmInfo);
 
-                _logger.info("[NTP] Time synchronized: %s", asctime(&tmInfo));
+                _logger.info("[NTP] Time synchronized: %s", timeBuffer);
             }
         }
     }

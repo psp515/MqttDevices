@@ -57,8 +57,8 @@ void setup() {
   while(!Serial);
 
   if (!LittleFS.begin()) {
-    logger.error("Failed to start filesystem");
-    delay(5000);
+    logger.error("Failed to start filesystem. Tools > Flash Size > at least 64KB");
+    delay(15000);
     watchdog_reboot(0, 0, 0);
   }
 
@@ -87,75 +87,152 @@ void setup() {
   }
 }
 
-int i = 0;
+
+unsigned long tempLastRead = 0;  
+unsigned long tempLastSend = 0;   
+float lastTemp = NAN;
+const unsigned long tempReadInterval = 15000; 
+const unsigned long tempSendInterval = 5*60*1000; 
+const float tempThreshold = 0.5;           
+
+unsigned long presenceLastSend = 0;
+int lastHumanPresenceState = 0;
+const unsigned long presenceInterval = 5000;      
+
 int timeout = 100;
-static int lastButtonState = LOW; 
+unsigned long lastSysLog = 0;
+bool _wifiInProgressLogged = false;
+bool _timeSyncInProgressLogged = false;
+bool _transportInProgressLogged = false;
+
+bool _wifiDisconnected = false;
 
 void loop() {
+  unsigned long now = millis();
+
+  if (now - lastSysLog >= 30000) {
+    lastSysLog = now;
+    logger.info("--- System Info, CPU Freq: %d, Heap: %d ", rp2040.f_cpu(), rp2040.getFreeHeap());
+  }
 
   //--------- Monitor WiFi
   bool wifiStatus = wifi.loop();
+
   if (!wifiStatus) {
-    logger.warn("Wifi connection failed...");
-    delay(timeout * 2);
+    if (!_wifiInProgressLogged) {
+      logger.warn("Wifi connection in progress...");
+      _wifiInProgressLogged = true;
+    }
+
+    _wifiDisconnected = true;;
     return;
+  } else {
+    _wifiInProgressLogged = false;
   }
 
   //--------- Monitor Tiome
   bool timeStatus = timeService.loop();
+
   if (!timeStatus) {
-    logger.warn("Time synchronization failed...");
-    delay(timeout * 2);
-    return;
+    if (!_timeSyncInProgressLogged) {
+      logger.warn("Time synchronization in progress...");
+      _timeSyncInProgressLogged = true;
+    }
+  } else {
+    _timeSyncInProgressLogged = false;
   }
 
   //--------- Monitor MQTT
-
   bool transportStatus = transport.loop();
 
   if (!transportStatus) {
-    logger.warn("Transport connection failed...");
-    delay(timeout * 2);
+    if (!_transportInProgressLogged) {
+      logger.warn("Transport connection in progress...");
+      _transportInProgressLogged = true;
+    }
+
     return;
+  } else {
+    _transportInProgressLogged = false;
   }
 
   //--------- Device functions
-  i++;
-  
-  // if recconnected send update functions update
 
-  //--------- Monitor Device Heap
-  if (i%100 == 0) {
-    logger.info("--- System Info, CPU Freq: %d, Heap: %d ", rp2040.f_cpu(), rp2040.getFreeHeap());
+  if (_wifiDisconnected) {
+    logger.info("WiFi reconnected, sending state update.");
+    smartdevices::transport::MqttTransportMessage msg(
+        "status",
+        reinterpret_cast<const uint8_t*>("true"),
+        strlen("true")
+    );
+
+    // TODO
+    // make message retained so that it is available immediately after reconnect for any subscribers add things there
+     
+
+    bool sendStatus = transport.send(msg);
+
+    if (!sendStatus) {
+      logger.error("Failed to send status update after WiFi reconnect.");
+    } else {
+      _wifiDisconnected = false;
+    }
   }
 
-  //--------- Monitor MQTT
-  if (i%250 == 0) {
-    i = 0;
+  // if recconnected send update functions update
+
+  //--------- Monitor DHT22
+  if (now - tempLastRead >= tempReadInterval) {
+    tempLastRead = now;
 
     float h = dht.readHumidity();
     float t = dht.readTemperature();
-    float f = dht.readTemperature(true);
 
-    if (isnan(h) || isnan(t) || isnan(f)) {
-      logger.error("Failed to read from DHT sensor!");
-      return;
+    if (!isnan(t) && (!lastTemp || abs(t - lastTemp) >= tempThreshold || now - tempLastSend >= tempSendInterval)) {
+      tempLastSend = now;
+      lastTemp = t;
+
+      logger.info("Temp: %.1f °C  Hum: %.1f %", t, h);
+
+      char payload[128];
+      snprintf(payload, sizeof(payload), "{\"temp\": %.1f, \"tempUnit\": \"°C\", \"hum\": %.1f, \"humUnit\": \"%%\"}", t, h);
+      MqttTransportMessage msg(
+          "environment",
+          reinterpret_cast<const uint8_t*>(payload),
+          strlen(payload)
+      );
+
+      bool sendStatus = transport.send(msg);
+
+      if (!sendStatus) {
+        logger.error("Failed to send temp and hum update.");
+      }
     }
-
-    Serial.println(String("Temp: ") + dht.readTemperature() + "°C  Hum: " + dht.readHumidity() + "%");
   }
 
   //--------- Monitor Static Presence
-  int buttonState = digitalRead(HUMAN_PRESENCE_Pin);
+  int humanPresenceState = digitalRead(HUMAN_PRESENCE_Pin);
 
-  if (buttonState != lastButtonState) {
-      lastButtonState = buttonState;
+  if (humanPresenceState != lastHumanPresenceState) {
+    if (now - presenceLastSend >= 10000) {
+      lastHumanPresenceState = humanPresenceState;
+      presenceLastSend = now;
 
-      if (buttonState == HIGH) {
-          logger.info("Human present.");
-      } else {
-          logger.info("No human present.");
+      logger.info(humanPresenceState == HIGH ? "Human present." : "No human present.");
+
+      smartdevices::transport::MqttTransportMessage msg(
+          "presence",
+          reinterpret_cast<const uint8_t*>(humanPresenceState == HIGH ? "1" : "0"),
+          1
+      );
+
+      bool sendStatus = transport.send(msg);
+
+      if (!sendStatus) {
+          logger.error("Failed to send presence update.");
       }
+    } 
+
   }
 
   delay(timeout);
