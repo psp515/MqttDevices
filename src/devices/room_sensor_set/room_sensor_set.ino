@@ -279,7 +279,7 @@ void loop() {
   int humanPresenceState = digitalRead(HUMAN_PRESENCE_Pin);
 
   if ((humanPresenceState != lastHumanPresenceState && presenceUpdatesEnabled) || forcePresenceUpdate) {
-    if ((now - presenceLastSend >= 10000) || forcePresenceUpdate) {
+    if ((now - presenceLastSend >= 2500) || forcePresenceUpdate) {
       forcePresenceUpdate = false;
       lastHumanPresenceState = humanPresenceState;
       presenceLastSend = now;
