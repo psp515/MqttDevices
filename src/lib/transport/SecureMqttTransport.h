@@ -19,11 +19,9 @@ class MqttTransportMessage : public TransportMessage {
 public:
     MqttTransportMessage() = default;
 
-    MqttTransportMessage(const char* topic,
-                         const uint8_t* payload,
-                         unsigned int length,
-                         bool retained = false)
-        : retained(retained)
+    MqttTransportMessage(const std::string& _path, const std::string& _payload, bool retained = false) : TransportMessage(_path, _payload), retained(retained) {}
+
+    MqttTransportMessage(const char* topic, const uint8_t* payload, unsigned int length,  bool retained = false) : retained(retained), TransportMessage()
     {
         if (topic) {
             path = std::string(topic);
@@ -37,7 +35,7 @@ public:
         }
     }
 
-    bool isRetained() const {
+    bool isRetained() const override {
         return retained;
     }
 
@@ -130,7 +128,6 @@ public:
                     true,
                     _stateDisconnectedPayload))
             {
-                _client.publish(_stateTopic, _stateConnectedPayload, true);
                 _connected = true;
                 _reconnectInterval = _defaultReconnectInterval;
 
@@ -167,22 +164,36 @@ public:
 
         return _client.publish(
             fullPath.c_str(),
-            message.getPayload().c_str()
+            message.getPayload().c_str(),
+            message.isRetained()
         );
     }
 
-    bool observe(const std::string& path,
-                 MessageCallback callback) override
-    {
+    bool observe(const std::string& path, MessageCallback callback) override {
         for (auto& cb : _callbacks) {
             if (cb.path == path)
                 return true;
         }
 
-        _callbacks.push_back({path, callback});
+        std::string fullPath;
+        if (!path.empty() && path[0] != '/') {
+            fullPath = std::string(_baseTopic) + "/" + path;
+        } else {
+            fullPath = path;
+        }
+
+        _callbacks.push_back({fullPath, callback});
 
         if (_client.connected()) {
-            return _client.subscribe(path.c_str());
+            bool subcribed = _client.subscribe(fullPath.c_str());
+
+            if (!subcribed) { 
+                _logger.info("[MQTT] Failed to observer topic: %s", fullPath);
+            } else {
+                _logger.info("[MQTT] Topic subscribed: %s", fullPath);
+            }
+
+            return true;
         }
 
         return true;
@@ -190,19 +201,14 @@ public:
 
 private:
 
-    static void mqttCallbackStatic(char* topic,
-                                   uint8_t* payload,
-                                   unsigned int length)
-    {
+    static void mqttCallbackStatic(char* topic, uint8_t* payload, unsigned int length) {
         if (_instance) {
             _instance->mqttCallback(topic, payload, length);
         }
     }
 
-    void mqttCallback(char* topic,
-                      uint8_t* payload,
-                      unsigned int length)
-    {
+    void mqttCallback(char* topic, uint8_t* payload, unsigned int length) {
+        _logger.info("[MQTT] Received callback for topic: %s", topic);
         MqttTransportMessage msg(topic, payload, length);
 
         for (auto& cb : _callbacks) {

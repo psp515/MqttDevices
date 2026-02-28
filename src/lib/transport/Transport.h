@@ -17,7 +17,8 @@ namespace smartdevices::transport {
     TransportMessage() = default;
 
     TransportMessage(const std::string& _path, const std::string& _payload) : path(_path), payload(_payload) {}
-
+    
+    virtual ~TransportMessage() = default;
     const std::string& getPath() const noexcept {
         return path;
     }
@@ -25,6 +26,8 @@ namespace smartdevices::transport {
     const std::string& getPayload() const noexcept {
         return payload;
     }
+
+    virtual bool isRetained() const { return false; }
 
   protected:
     std::string path;

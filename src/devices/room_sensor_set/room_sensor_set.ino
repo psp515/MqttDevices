@@ -34,6 +34,7 @@ using namespace smartdevices::network;
 using namespace smartdevices::transport;
 using namespace smartdevices::clock;
 
+// ------- Device Agnostic
 SerialLogger serialLogger(Serial);
 JsonConfiguration jsonConfiguration(serialLogger, "./appsettings.json");
 PicoWifiManager wifiManagerRp(jsonConfiguration, serialLogger);
@@ -49,6 +50,51 @@ Configuration& configuration = jsonConfiguration;
 WifiManager& wifi = wifiManagerRp;
 Transport& transport = secureTransport;
 ClockService& timeService = nptTimeService;
+
+// ------- Device Specific
+unsigned long tempLastRead = 0;  
+unsigned long tempLastSend = 0;   
+float lastTemp = NAN;
+const unsigned long tempReadInterval = 30 * 1000; 
+const unsigned long tempSendInterval = 5*60*1000; 
+const float tempThreshold = 0.5;           
+
+unsigned long presenceLastSend = 0;
+int lastHumanPresenceState = 0;
+const unsigned long presenceInterval = 5000;      
+
+int timeout = 100;
+unsigned long lastSysLog = 0;
+bool _wifiInProgressLogged = false;
+bool _timeSyncInProgressLogged = false;
+bool _transportInProgressLogged = false;
+
+bool _wifiDisconnected = true;
+
+bool presenceUpdatesEnabled = true;
+bool temperatureUpdatesEnabled = true; 
+
+void presenceStateUpdates(const TransportMessage& message) {
+    std::string payload = message.getPayload();
+    bool presence = (payload == "true");
+    presenceUpdatesEnabled = presence;
+
+    logger.info("[Device] Presence updates enabled set to: %s", presenceUpdatesEnabled ? "true" : "false");
+}
+
+void temperatureStateUpdates(const TransportMessage& message) {
+    std::string payload = message.getPayload();
+    bool temperatureState = (payload == "true");
+    temperatureUpdatesEnabled = temperatureState;
+
+    logger.info("[Device] Temperature payload: %s", payload.c_str());
+    logger.info("[Device] Temperature updates enabled set to: %s", temperatureUpdatesEnabled ? "true" : "false");
+}
+
+void observeEvents() {
+  transport.observe("environment/status", temperatureStateUpdates);
+  transport.observe("presence/status", presenceStateUpdates);
+}
 
 void setup() {
   delay(2000);
@@ -85,30 +131,14 @@ void setup() {
     delay(15000);
     watchdog_reboot(0, 0, 0);
   }
+
+  observeEvents();
+  watchdog_enable(5000, 1);
 }
-
-
-unsigned long tempLastRead = 0;  
-unsigned long tempLastSend = 0;   
-float lastTemp = NAN;
-const unsigned long tempReadInterval = 15000; 
-const unsigned long tempSendInterval = 5*60*1000; 
-const float tempThreshold = 0.5;           
-
-unsigned long presenceLastSend = 0;
-int lastHumanPresenceState = 0;
-const unsigned long presenceInterval = 5000;      
-
-int timeout = 100;
-unsigned long lastSysLog = 0;
-bool _wifiInProgressLogged = false;
-bool _timeSyncInProgressLogged = false;
-bool _transportInProgressLogged = false;
-
-bool _wifiDisconnected = false;
 
 void loop() {
   unsigned long now = millis();
+  watchdog_update();
 
   if (now - lastSysLog >= 30000) {
     lastSysLog = now;
@@ -159,18 +189,29 @@ void loop() {
   //--------- Device functions
 
   if (_wifiDisconnected) {
-    logger.info("WiFi reconnected, sending state update.");
+    logger.info("Device connected, sending state update.");
+
     smartdevices::transport::MqttTransportMessage msg(
         "status",
-        reinterpret_cast<const uint8_t*>("true"),
-        strlen("true")
+        "true",
+        true
     );
 
-    // TODO
-    // make message retained so that it is available immediately after reconnect for any subscribers add things there
-     
-
     bool sendStatus = transport.send(msg);
+
+    smartdevices::transport::MqttTransportMessage temperatureMsg(
+      "environment/status",
+      (temperatureStateUpdates ? "true" : "false")
+    );
+
+    transport.send(temperatureMsg);
+
+    smartdevices::transport::MqttTransportMessage presenceMsg(
+      "presence/status",
+      (presenceUpdatesEnabled ? "true" : "false")
+    );
+
+    transport.send(presenceMsg);
 
     if (!sendStatus) {
       logger.error("Failed to send status update after WiFi reconnect.");
@@ -182,7 +223,8 @@ void loop() {
   // if recconnected send update functions update
 
   //--------- Monitor DHT22
-  if (now - tempLastRead >= tempReadInterval) {
+  if (now - tempLastRead >= tempReadInterval && temperatureUpdatesEnabled) {
+
     tempLastRead = now;
 
     float h = dht.readHumidity();
@@ -213,7 +255,7 @@ void loop() {
   //--------- Monitor Static Presence
   int humanPresenceState = digitalRead(HUMAN_PRESENCE_Pin);
 
-  if (humanPresenceState != lastHumanPresenceState) {
+  if (humanPresenceState != lastHumanPresenceState && presenceUpdatesEnabled) {
     if (now - presenceLastSend >= 10000) {
       lastHumanPresenceState = humanPresenceState;
       presenceLastSend = now;
@@ -222,7 +264,7 @@ void loop() {
 
       smartdevices::transport::MqttTransportMessage msg(
           "presence",
-          reinterpret_cast<const uint8_t*>(humanPresenceState == HIGH ? "1" : "0"),
+          reinterpret_cast<const uint8_t*>(humanPresenceState == HIGH ? "true" : "false"),
           1
       );
 

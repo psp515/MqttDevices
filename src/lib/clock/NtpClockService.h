@@ -71,6 +71,7 @@ public:
             startSntp();
             _started = true;
             _lastSyncTrigger = nowMs;
+            return false;
         }
 
         if (nowMs - _lastCheck >= _checkInterval)
