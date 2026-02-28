@@ -72,12 +72,24 @@ bool _transportInProgressLogged = false;
 bool _wifiDisconnected = true;
 
 bool presenceUpdatesEnabled = true;
+bool forcePresenceUpdate = false;
 bool temperatureUpdatesEnabled = true; 
+bool forceTemperatureUpdate = false;
 
 void presenceStateUpdates(const TransportMessage& message) {
     std::string payload = message.getPayload();
     bool presence = (payload == "true");
+
+    if (presence == presenceUpdatesEnabled) {
+      logger.warn("[Device] Presence update ignored.");
+      return;
+    }
+    
     presenceUpdatesEnabled = presence;
+
+    if (presence) {
+      forcePresenceUpdate = true;
+    }
 
     logger.info("[Device] Presence updates enabled set to: %s", presenceUpdatesEnabled ? "true" : "false");
 }
@@ -85,9 +97,18 @@ void presenceStateUpdates(const TransportMessage& message) {
 void temperatureStateUpdates(const TransportMessage& message) {
     std::string payload = message.getPayload();
     bool temperatureState = (payload == "true");
+  
+    if (temperatureState == temperatureUpdatesEnabled) {
+      logger.warn("[Device] Temperature update ignored.");
+      return;
+    }
+
     temperatureUpdatesEnabled = temperatureState;
 
-    logger.info("[Device] Temperature payload: %s", payload.c_str());
+    if (temperatureState) {
+      forceTemperatureUpdate = true;
+    }
+
     logger.info("[Device] Temperature updates enabled set to: %s", temperatureUpdatesEnabled ? "true" : "false");
 }
 
@@ -161,13 +182,16 @@ void loop() {
   }
 
   //--------- Monitor Tiome
-  bool timeStatus = timeService.loop();
+  bool timeStatus = timeService.loop(); 
+  // false is returned only on initialization
 
   if (!timeStatus) {
     if (!_timeSyncInProgressLogged) {
       logger.warn("Time synchronization in progress...");
       _timeSyncInProgressLogged = true;
     }
+
+    return;
   } else {
     _timeSyncInProgressLogged = false;
   }
@@ -220,19 +244,18 @@ void loop() {
     }
   }
 
-  // if recconnected send update functions update
-
   //--------- Monitor DHT22
-  if (now - tempLastRead >= tempReadInterval && temperatureUpdatesEnabled) {
+  if ((now - tempLastRead >= tempReadInterval && temperatureUpdatesEnabled) || forceTemperatureUpdate) {
 
     tempLastRead = now;
 
     float h = dht.readHumidity();
     float t = dht.readTemperature();
 
-    if (!isnan(t) && (!lastTemp || abs(t - lastTemp) >= tempThreshold || now - tempLastSend >= tempSendInterval)) {
+    if (!isnan(t) && !isnan(h) && ((!lastTemp || abs(t - lastTemp) >= tempThreshold || now - tempLastSend >= tempSendInterval) || forceTemperatureUpdate)) {
       tempLastSend = now;
       lastTemp = t;
+      forceTemperatureUpdate = false;
 
       logger.info("Temp: %.1f °C  Hum: %.1f %", t, h);
 
@@ -255,8 +278,9 @@ void loop() {
   //--------- Monitor Static Presence
   int humanPresenceState = digitalRead(HUMAN_PRESENCE_Pin);
 
-  if (humanPresenceState != lastHumanPresenceState && presenceUpdatesEnabled) {
-    if (now - presenceLastSend >= 10000) {
+  if ((humanPresenceState != lastHumanPresenceState && presenceUpdatesEnabled) || forcePresenceUpdate) {
+    if ((now - presenceLastSend >= 10000) || forcePresenceUpdate) {
+      forcePresenceUpdate = false;
       lastHumanPresenceState = humanPresenceState;
       presenceLastSend = now;
 
@@ -264,8 +288,7 @@ void loop() {
 
       smartdevices::transport::MqttTransportMessage msg(
           "presence",
-          reinterpret_cast<const uint8_t*>(humanPresenceState == HIGH ? "true" : "false"),
-          1
+          (humanPresenceState == HIGH ? "true" : "false")
       );
 
       bool sendStatus = transport.send(msg);
