@@ -35,6 +35,7 @@ using namespace smartdevices::transport;
 using namespace smartdevices::clock;
 
 // ------- Device Agnostic
+//SerialLogger serialLogger(Serial, LogLevel::DEBUG);
 SerialLogger serialLogger(Serial);
 JsonConfiguration jsonConfiguration(serialLogger, "./appsettings.json");
 PicoWifiManager wifiManagerRp(jsonConfiguration, serialLogger);
