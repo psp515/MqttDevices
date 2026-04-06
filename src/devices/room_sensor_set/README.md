@@ -187,4 +187,5 @@ TODO: Wiring Schematic
 - web server for simple configuration update
 - Dynamically update Static human sensor configuration through rx tx
 - use simpler device like ESP01 - rpi is too much power
-- adding support for a IR pilot for configuring options in room 
+- adding support for a IR pilot for configuring options in room
+- getting more information from sensor with [radar library](https://github.com/taunoe/mr24hpc1-radar) or writing own

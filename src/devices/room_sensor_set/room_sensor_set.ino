@@ -21,12 +21,11 @@
 #include "SecureMqttTransport.h"
 #include "NtpClockService.h"
 
-#define DHTPIN 14  
+#define DHTPIN 8  
 #define DHTTYPE DHT22  
 
-#define HUMAN_PRESENCE_RX_Pin 5
-#define HUMAN_PRESENCE_TX_Pin 4
-#define HUMAN_PRESENCE_Pin 15
+#define HUMAN_PRESENCE_Pin 6
+#define HUMAN_ACTIVE_Pin 7
 
 using namespace smartdevices::logging;
 using namespace smartdevices::configuration;
@@ -42,8 +41,6 @@ PicoWifiManager wifiManagerRp(jsonConfiguration, serialLogger);
 SecureMqttTransport secureTransport(jsonConfiguration, serialLogger);
 NtpClockService nptTimeService(jsonConfiguration, serialLogger);
 
-SoftwareSerial mySerial = SoftwareSerial(HUMAN_PRESENCE_RX_Pin, HUMAN_PRESENCE_TX_Pin);
-HumanStaticLite radar = HumanStaticLite(&mySerial);
 DHT dht(DHTPIN, DHTTYPE);
 
 Logger& logger = serialLogger;
@@ -51,6 +48,12 @@ Configuration& configuration = jsonConfiguration;
 WifiManager& wifi = wifiManagerRp;
 Transport& transport = secureTransport;
 ClockService& timeService = nptTimeService;
+
+// TODO: Refactor
+// - EMBED DHT INTO SEPARTATE CLASS WITH loop and setup function include state handling (send/not send updates based on interval and incomming settings (override value in config) - load defaulut state from config on startup)
+// - EMBED PRESENCE LOGIC INTO SEPARATE CLASS WITH loop and setup function (send/not send updates based on interval and incomming settings (override value in config) - load defaulut state from config on startup)
+// - EMBED ACTIVE LOGIC INTO SEPARATE CLASS WITH loop and setup function (send/not send updates based on interval and incomming settings (override value in config) - load defaulut state from config on startup)
+// - send device config on start (consider sending updated state?)
 
 // ------- Device Specific
 unsigned long tempLastRead = 0;  
@@ -132,8 +135,9 @@ void setup() {
 
   logger.info("--------- Initializing");
   pinMode(HUMAN_PRESENCE_Pin, INPUT); 
+  pinMode(HUMAN_ACTIVE_Pin, INPUT); 
   dht.begin();
-  radar.HumanStatic_func(false);
+
   configuration.load();
 
   if (!wifi.setup()) {
